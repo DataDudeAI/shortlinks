@@ -81,19 +81,16 @@ def main():
                 'referrer': st.query_params.get('ref', '')
             })
             # Use JavaScript for immediate redirect
-            st.markdown(
-                f"""
+            js_code = f"""
                 <script>
                     window.location.href = "{redirect_url}";
                 </script>
-                """,
-                unsafe_allow_html=True
-            )
-            st.write(f"Redirecting to {redirect_url}...")
-            st.stop()
+            """
+            st.components.v1.html(js_code, height=0)
+            return
         else:
             st.error("Invalid short URL")
-            st.stop()
+            return
 
     st.title('URL Shortener')
     
@@ -108,7 +105,25 @@ def main():
                 shortened_url = f"{BASE_URL}/?r={short_code}"
                 st.success('URL shortened successfully!')
                 st.code(shortened_url)
-                st.markdown(f"[Test your link]({shortened_url})")
+                
+                # Add copy button
+                st.markdown(f"""
+                    <input type="text" value="{shortened_url}" id="shortUrl" style="position: absolute; left: -9999px;">
+                    <button onclick="copyUrl()" style="background-color: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">
+                        Copy URL
+                    </button>
+                    <script>
+                    function copyUrl() {{
+                        var copyText = document.getElementById("shortUrl");
+                        copyText.select();
+                        document.execCommand("copy");
+                        alert("URL copied to clipboard!");
+                    }}
+                    </script>
+                """, unsafe_allow_html=True)
+                
+                # Add direct link
+                st.markdown(f"[Open URL]({shortened_url})")
 
     with tab2:
         # Get all URLs from database
