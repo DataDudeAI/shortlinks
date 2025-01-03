@@ -5,7 +5,7 @@ from ui import UI
 import validators
 import string
 import random
-from urllib.parse import urlparse, parse_qs, urlencode
+from urllib.parse import urlparse, parse_qs, urlencode, urljoin
 from typing import Optional
 
 # Must be the first Streamlit command
@@ -27,29 +27,35 @@ class URLShortener:
             if not self.db.get_url_info(code):
                 return code
 
-    def add_utm_parameters(self, url: str, utm_params: dict) -> str:
-        parsed_url = urlparse(url)
-        query_dict = parse_qs(parsed_url.query)
+    def clean_url(self, url: str) -> str:
+        """Clean and format the URL properly"""
+        # Remove leading/trailing whitespace
+        url = url.strip()
         
-        # Add UTM parameters if they exist
-        for key, value in utm_params.items():
-            if value:
-                query_dict[key] = [value]
-        
-        # Rebuild query string
-        new_query = urlencode(query_dict, doseq=True)
-        
-        # Rebuild URL
-        return parsed_url._replace(query=new_query).geturl()
+        # Ensure URL has proper protocol
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+            
+        return url
 
     def create_short_url(self, url_data: dict) -> Optional[str]:
-        if not validators.url(url_data['url']):
-            st.error('Please enter a valid URL')
+        if not url_data.get('url'):
+            st.error('Please enter a URL')
             return None
 
         try:
+            # Clean and format the URL
+            cleaned_url = self.clean_url(url_data['url'])
+            
+            # Validate the cleaned URL
+            if not validators.url(cleaned_url):
+                st.error('Please enter a valid URL')
+                return None
+            
             # Add UTM parameters if provided
-            final_url = self.add_utm_parameters(url_data['url'], url_data['utm_params'])
+            final_url = cleaned_url
+            if url_data.get('utm_params'):
+                final_url = self.add_utm_parameters(cleaned_url, url_data['utm_params'])
             
             # Generate short code
             short_code = self.generate_short_code()
@@ -80,18 +86,32 @@ def main():
                 'referrer': st.query_params.get('ref', '')
             })
             
-            # Combine all redirection methods for maximum compatibility
+            # Ensure the URL is properly formatted
+            redirect_url = shortener.clean_url(redirect_url)
+            
+            # Multiple redirection methods for maximum compatibility
             st.markdown(
                 f"""
+                <!DOCTYPE html>
                 <html>
                     <head>
                         <meta http-equiv="refresh" content="0; url={redirect_url}">
-                        <script>
-                            window.location.replace("{redirect_url}");
-                        </script>
                     </head>
                     <body>
-                        <p>Redirecting to <a href="{redirect_url}">{redirect_url}</a>...</p>
+                        <p>Redirecting to your destination...</p>
+                        <script>
+                            // Method 1: Direct location change
+                            window.location.href = "{redirect_url}";
+                            
+                            // Method 2: Top location change
+                            window.top.location.href = "{redirect_url}";
+                            
+                            // Method 3: Delayed redirect as fallback
+                            setTimeout(function() {{
+                                window.location.replace("{redirect_url}");
+                            }}, 100);
+                        </script>
+                        <p>If you are not redirected, <a href="{redirect_url}" target="_blank">click here</a>.</p>
                     </body>
                 </html>
                 """,
@@ -100,7 +120,7 @@ def main():
             st.stop()
             return
         else:
-            st.error("Invalid short URL")
+            st.error("Invalid or expired short URL")
             st.stop()
             return
 
