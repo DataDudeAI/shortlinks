@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime
 import io
 
@@ -15,10 +15,10 @@ class UI:
             url_input = st.text_input('Enter URL to shorten')
             
             # UTM Parameters
-            st.subheader("Campaign Parameters")
-            utm_source = st.text_input('Campaign Source (e.g., google, facebook, newsletter)')
-            utm_medium = st.text_input('Campaign Medium (e.g., cpc, email, social)')
-            utm_campaign = st.text_input('Campaign Name')
+            with st.expander("Add Campaign Parameters (Optional)"):
+                utm_source = st.text_input('Campaign Source (e.g., facebook, twitter)', '')
+                utm_medium = st.text_input('Campaign Medium (e.g., social, email)', '')
+                utm_campaign = st.text_input('Campaign Name', '')
             
             submitted = st.form_submit_button("Create Short URL")
             
@@ -34,173 +34,108 @@ class UI:
         return None
 
     def render_analytics(self, analytics_data: Dict[str, Any]):
-        if not analytics_data:
-            st.warning("No analytics data available yet")
-            return
-
-        # Create two columns for the layout
-        col1, col2 = st.columns([2, 1])
+        """Render analytics data for a URL"""
+        st.subheader("📊 Link Analytics")
         
+        # Basic Stats
+        col1, col2, col3 = st.columns(3)
         with col1:
-            # URL Information Section
-            st.subheader("📊 Link Details")
-            url_info = pd.DataFrame({
-                'Metric': [
-                    'Original URL',
-                    'Short Code',
-                    'Created Date',
-                    'Last Click',
-                    'Total Clicks',
-                    'Unique Sources',
-                    'Unique Mediums'
-                ],
-                'Value': [
-                    analytics_data['original_url'],
-                    analytics_data.get('short_code', 'N/A'),
-                    datetime.strptime(analytics_data['created_at'], '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M'),
-                    analytics_data.get('last_clicked', 'No clicks yet'),
-                    analytics_data['total_clicks'],
-                    analytics_data.get('unique_sources', 0),
-                    analytics_data.get('unique_mediums', 0)
-                ]
-            })
-            st.dataframe(url_info, hide_index=True, use_container_width=True)
-
+            st.metric("Total Clicks", analytics_data['total_clicks'])
         with col2:
-            # Quick Stats
-            st.subheader("📈 Quick Stats")
-            
-            # Calculate click rate per day
+            st.metric("Last Click", analytics_data.get('last_clicked', 'Never'))
+        with col3:
             created_date = datetime.strptime(analytics_data['created_at'], '%Y-%m-%d %H:%M:%S')
-            days_active = (datetime.now() - created_date).days + 1
-            clicks_per_day = analytics_data['total_clicks'] / days_active
-
-            metrics = {
-                "Total Clicks": analytics_data['total_clicks'],
-                "Days Active": days_active,
-                "Avg. Clicks/Day": f"{clicks_per_day:.1f}"
-            }
-            
-            for label, value in metrics.items():
-                st.metric(label=label, value=value)
-
-        # Traffic Sources Analysis
-        st.subheader("🔍 Traffic Analysis")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Source Analysis
-            st.subheader("Traffic Sources")
-            if analytics_data['utm_sources']:
-                utm_df = pd.DataFrame(
-                    analytics_data['utm_sources'].items(),
-                    columns=['Source', 'Clicks']
-                )
-                utm_df['Percentage'] = (utm_df['Clicks'] / utm_df['Clicks'].sum() * 100).round(1)
-                utm_df['Percentage'] = utm_df['Percentage'].astype(str) + '%'
-                
-                st.bar_chart(utm_df.set_index('Source')['Clicks'])
-                st.dataframe(utm_df, hide_index=True, use_container_width=True)
+            days_active = (datetime.now() - created_date).days
+            if days_active > 0:
+                clicks_per_day = analytics_data['total_clicks'] / days_active
+                st.metric("Avg. Clicks/Day", f"{clicks_per_day:.1f}")
             else:
-                st.info("No source data available yet")
+                st.metric("Avg. Clicks/Day", "0")
 
-        with col2:
-            # Medium Analysis
-            st.subheader("Traffic Mediums")
-            if analytics_data.get('utm_mediums'):
-                utm_medium_df = pd.DataFrame(
-                    analytics_data['utm_mediums'].items(),
-                    columns=['Medium', 'Clicks']
-                )
-                utm_medium_df['Percentage'] = (utm_medium_df['Clicks'] / utm_medium_df['Clicks'].sum() * 100).round(1)
-                utm_medium_df['Percentage'] = utm_medium_df['Percentage'].astype(str) + '%'
+        # Traffic Sources
+        if analytics_data.get('utm_sources'):
+            st.subheader("🔍 Traffic Sources")
+            source_df = pd.DataFrame(
+                analytics_data['utm_sources'].items(),
+                columns=['Source', 'Clicks']
+            ).sort_values('Clicks', ascending=False)
+            
+            # Calculate percentages
+            total = source_df['Clicks'].sum()
+            source_df['Percentage'] = (source_df['Clicks'] / total * 100).round(1)
+            source_df['Percentage'] = source_df['Percentage'].astype(str) + '%'
+            
+            st.dataframe(source_df, hide_index=True)
+
+        # Traffic Mediums
+        if analytics_data.get('utm_mediums'):
+            st.subheader("📱 Traffic Mediums")
+            medium_df = pd.DataFrame(
+                analytics_data['utm_mediums'].items(),
+                columns=['Medium', 'Clicks']
+            ).sort_values('Clicks', ascending=False)
+            
+            total = medium_df['Clicks'].sum()
+            medium_df['Percentage'] = (medium_df['Clicks'] / total * 100).round(1)
+            medium_df['Percentage'] = medium_df['Percentage'].astype(str) + '%'
+            
+            st.dataframe(medium_df, hide_index=True)
+
+        # Recent Clicks
+        if analytics_data.get('recent_clicks'):
+            st.subheader("🕒 Recent Activity")
+            clicks_df = pd.DataFrame(analytics_data['recent_clicks'])
+            if not clicks_df.empty:
+                clicks_df['clicked_at'] = pd.to_datetime(clicks_df['clicked_at'])
+                clicks_df = clicks_df.sort_values('clicked_at', ascending=False)
                 
-                st.bar_chart(utm_medium_df.set_index('Medium')['Clicks'])
-                st.dataframe(utm_medium_df, hide_index=True, use_container_width=True)
-            else:
-                st.info("No medium data available yet")
+                for _, click in clicks_df.iterrows():
+                    with st.expander(f"Click at {click['clicked_at'].strftime('%Y-%m-%d %H:%M:%S')}"):
+                        st.write(f"Source: {click['utm_source']}")
+                        st.write(f"Medium: {click['utm_medium']}")
+                        st.write(f"Campaign: {click['utm_campaign']}")
+                        if click['referrer']:
+                            st.write(f"Referrer: {click['referrer']}")
 
-        # Time Analysis
-        if analytics_data.get('clicks_over_time'):
-            st.subheader("📅 Time Analysis")
-            time_df = pd.DataFrame(
-                analytics_data['clicks_over_time'].items(),
-                columns=['Date', 'Clicks']
-            )
-            time_df['Date'] = pd.to_datetime(time_df['Date'])
-            time_df = time_df.sort_values('Date')
-            
-            st.line_chart(time_df.set_index('Date'))
-            st.dataframe(time_df, hide_index=True, use_container_width=True)
-
-        # Campaign Performance
-        if analytics_data.get('campaigns'):
-            st.subheader("🎯 Campaign Performance")
-            campaign_df = pd.DataFrame(
-                analytics_data['campaigns'].items(),
-                columns=['Campaign', 'Clicks']
-            )
-            campaign_df['Percentage'] = (campaign_df['Clicks'] / campaign_df['Clicks'].sum() * 100).round(1)
-            campaign_df['Percentage'] = campaign_df['Percentage'].astype(str) + '%'
-            
-            st.bar_chart(campaign_df.set_index('Campaign')['Clicks'])
-            st.dataframe(campaign_df, hide_index=True, use_container_width=True)
-
-        # Export Options
-        st.subheader("📤 Export Data")
-        
-        try:
-            # Prepare data for CSV export
-            export_dict = {
-                'Link Details': {
-                    'Original URL': analytics_data['original_url'],
-                    'Short Code': analytics_data.get('short_code', 'N/A'),
-                    'Created Date': analytics_data['created_at'],
-                    'Total Clicks': analytics_data['total_clicks'],
-                    'Last Click': analytics_data.get('last_clicked', 'No clicks yet'),
-                    'Unique Sources': analytics_data.get('unique_sources', 0),
-                    'Unique Mediums': analytics_data.get('unique_mediums', 0)
-                }
-            }
-
-            # Add traffic sources
-            if analytics_data.get('utm_sources'):
-                export_dict['Traffic Sources'] = analytics_data['utm_sources']
-
-            # Add traffic mediums
-            if analytics_data.get('utm_mediums'):
-                export_dict['Traffic Mediums'] = analytics_data['utm_mediums']
-
-            # Convert to DataFrame
-            df_details = pd.DataFrame([export_dict['Link Details']])
-            
-            # Create CSV data
-            csv_data = io.StringIO()
-            df_details.to_csv(csv_data, index=False)
-            
-            # Add traffic data if available
-            if 'Traffic Sources' in export_dict:
-                csv_data.write('\n\nTraffic Sources\n')
-                pd.DataFrame(list(export_dict['Traffic Sources'].items()), 
-                           columns=['Source', 'Clicks']).to_csv(csv_data, index=False)
-            
-            if 'Traffic Mediums' in export_dict:
-                csv_data.write('\n\nTraffic Mediums\n')
-                pd.DataFrame(list(export_dict['Traffic Mediums'].items()), 
-                           columns=['Medium', 'Clicks']).to_csv(csv_data, index=False)
-
-            # Offer download button
+        # Export Data
+        st.subheader("📥 Export Data")
+        if st.button("Download Analytics"):
+            csv = self.generate_analytics_csv(analytics_data)
             st.download_button(
-                label="📥 Download Analytics Report",
-                data=csv_data.getvalue(),
-                file_name=f"analytics_{analytics_data.get('short_code', 'data')}_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-                key='download_analytics'
+                label="Download CSV",
+                data=csv,
+                file_name=f"analytics_{analytics_data['short_code']}.csv",
+                mime="text/csv"
             )
 
-        except Exception as e:
-            st.error(f"Error generating export: {str(e)}")
+    def generate_analytics_csv(self, analytics_data: Dict[str, Any]) -> str:
+        """Generate CSV data for analytics export"""
+        # Create DataFrames for different sections
+        basic_info = pd.DataFrame([{
+            'Short Code': analytics_data['short_code'],
+            'Original URL': analytics_data['original_url'],
+            'Total Clicks': analytics_data['total_clicks'],
+            'Created At': analytics_data['created_at'],
+            'Last Click': analytics_data.get('last_clicked', 'Never')
+        }])
+
+        # Combine all data into CSV
+        csv_parts = []
+        csv_parts.append("Basic Information")
+        csv_parts.append(basic_info.to_csv(index=False))
+        
+        if analytics_data.get('utm_sources'):
+            csv_parts.append("\nTraffic Sources")
+            sources_df = pd.DataFrame(analytics_data['utm_sources'].items(), 
+                                    columns=['Source', 'Clicks'])
+            csv_parts.append(sources_df.to_csv(index=False))
+
+        if analytics_data.get('recent_clicks'):
+            csv_parts.append("\nRecent Clicks")
+            clicks_df = pd.DataFrame(analytics_data['recent_clicks'])
+            csv_parts.append(clicks_df.to_csv(index=False))
+
+        return '\n'.join(csv_parts)
 
     def render_past_links(self, past_links: list):
         if not past_links:
