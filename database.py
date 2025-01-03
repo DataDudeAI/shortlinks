@@ -138,9 +138,15 @@ class Database:
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Get URL info
-            url_info = self.get_url_info(short_code)
-            if not url_info:
+            # Get URL info first
+            c.execute('''
+                SELECT original_url, created_at, total_clicks, short_code
+                FROM urls 
+                WHERE short_code = ?
+            ''', (short_code,))
+            url_result = c.fetchone()
+            
+            if not url_result:
                 return None
 
             # Get click analytics
@@ -149,14 +155,15 @@ class Database:
                     COUNT(*) as total_clicks,
                     MAX(clicked_at) as last_clicked,
                     COUNT(DISTINCT utm_source) as unique_sources,
-                    COUNT(DISTINCT utm_medium) as unique_mediums
+                    COUNT(DISTINCT utm_medium) as unique_mediums,
+                    COUNT(DISTINCT utm_campaign) as unique_campaigns
                 FROM analytics
                 WHERE short_code = ?
             ''', (short_code,))
             
             analytics = c.fetchone()
             
-            # Get UTM breakdowns
+            # Get UTM source breakdown
             c.execute('''
                 SELECT utm_source, COUNT(*) as count
                 FROM analytics
@@ -166,6 +173,7 @@ class Database:
             
             utm_sources = dict(c.fetchall() or [])
             
+            # Get UTM medium breakdown
             c.execute('''
                 SELECT utm_medium, COUNT(*) as count
                 FROM analytics
@@ -175,14 +183,42 @@ class Database:
             
             utm_mediums = dict(c.fetchall() or [])
             
+            # Get campaign breakdown
+            c.execute('''
+                SELECT utm_campaign, COUNT(*) as count
+                FROM analytics
+                WHERE short_code = ? AND utm_campaign IS NOT NULL
+                GROUP BY utm_campaign
+            ''', (short_code,))
+            
+            campaigns = dict(c.fetchall() or [])
+            
+            # Get clicks over time
+            c.execute('''
+                SELECT 
+                    date(clicked_at) as click_date,
+                    COUNT(*) as clicks
+                FROM analytics
+                WHERE short_code = ?
+                GROUP BY date(clicked_at)
+                ORDER BY click_date
+            ''', (short_code,))
+            
+            clicks_over_time = dict(c.fetchall() or [])
+            
             return {
-                **url_info,
-                'total_clicks': analytics[0],
+                'original_url': url_result[0],
+                'created_at': url_result[1],
+                'total_clicks': url_result[2],
+                'short_code': url_result[3],
                 'last_clicked': analytics[1],
                 'unique_sources': analytics[2],
                 'unique_mediums': analytics[3],
+                'unique_campaigns': analytics[4],
                 'utm_sources': utm_sources,
-                'utm_mediums': utm_mediums
+                'utm_mediums': utm_mediums,
+                'campaigns': campaigns,
+                'clicks_over_time': clicks_over_time
             }
         finally:
             conn.close() 
