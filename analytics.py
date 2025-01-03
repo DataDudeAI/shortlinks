@@ -30,8 +30,12 @@ class Analytics:
         }
 
     def track_click(self, short_code: str, request_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Enhanced click tracking with detailed analytics and instant return"""
+        """Enhanced click tracking with success tracking"""
         try:
+            # Get the original URL first
+            original_url = self.get_redirect_url(short_code)
+            is_successful = bool(original_url)
+            
             # Extract user agent info
             user_agent = request_data.get('User-Agent', '')
             ua_parser = parse(user_agent)
@@ -53,7 +57,8 @@ class Analytics:
                 'country': geo_data.get('country', 'Unknown'),
                 'device_type': ua_parser.device.family,
                 'browser': ua_parser.browser.family,
-                'os': ua_parser.os.family
+                'os': ua_parser.os.family,
+                'successful': is_successful
             }
             
             # Save to database
