@@ -33,22 +33,24 @@ class UI:
         return None
 
     def render_analytics(self, analytics_data: Dict[str, Any]):
+        if not analytics_data:
+            st.warning("No analytics data available yet")
+            return
+            
         st.subheader("Analytics Overview")
         
         # URL Info
         st.write("Original URL:", analytics_data['original_url'])
-        created_at = datetime.strptime(analytics_data['created_at'], '%Y-%m-%d %H:%M:%S')
         
         # Key metrics in columns
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Total Clicks", analytics_data['total_clicks'])
         with col2:
-            st.metric("Created Date", created_at.strftime('%Y-%m-%d'))
+            st.metric("Unique Sources", analytics_data.get('unique_sources', 0))
         with col3:
-            if analytics_data['last_clicked']:
-                last_click = datetime.strptime(analytics_data['last_clicked'], '%Y-%m-%d %H:%M:%S')
-                st.metric("Last Click", last_click.strftime('%Y-%m-%d %H:%M'))
+            if analytics_data.get('last_clicked'):
+                st.metric("Last Click", analytics_data['last_clicked'])
             else:
                 st.metric("Last Click", "No clicks yet")
 
