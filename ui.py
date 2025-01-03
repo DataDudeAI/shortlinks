@@ -3,6 +3,8 @@ import pandas as pd
 from typing import Dict, Any
 from datetime import datetime
 
+BASE_URL = "https://shortlinksnandan.streamlit.app"
+
 class UI:
     def __init__(self, url_shortener):
         self.url_shortener = url_shortener
@@ -82,7 +84,7 @@ class UI:
                 col1, col2 = st.columns([3, 1])
                 with col1:
                     st.write("**Original URL:**", link['original_url'])
-                    shortened_url = f"http://localhost:8501/?r={link['short_code']}"
+                    shortened_url = f"{BASE_URL}/?r={link['short_code']}"
                     st.code(shortened_url)
                     st.markdown(f"[Test link]({shortened_url})")
                 with col2:
