@@ -36,43 +36,131 @@ class UI:
         if not analytics_data:
             st.warning("No analytics data available yet")
             return
-            
-        st.subheader("Analytics Overview")
+
+        # Create two columns for the layout
+        col1, col2 = st.columns([2, 1])
         
-        # URL Info
-        st.write("Original URL:", analytics_data['original_url'])
-        
-        # Key metrics in columns
-        col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total Clicks", analytics_data['total_clicks'])
+            # URL Information Section
+            st.subheader("📊 Link Details")
+            url_info = pd.DataFrame({
+                'Metric': [
+                    'Original URL',
+                    'Short Code',
+                    'Created Date',
+                    'Last Click',
+                    'Total Clicks',
+                    'Unique Sources',
+                    'Unique Mediums'
+                ],
+                'Value': [
+                    analytics_data['original_url'],
+                    analytics_data.get('short_code', 'N/A'),
+                    datetime.strptime(analytics_data['created_at'], '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M'),
+                    analytics_data.get('last_clicked', 'No clicks yet'),
+                    analytics_data['total_clicks'],
+                    analytics_data.get('unique_sources', 0),
+                    analytics_data.get('unique_mediums', 0)
+                ]
+            })
+            st.dataframe(url_info, hide_index=True, use_container_width=True)
+
         with col2:
-            st.metric("Unique Sources", analytics_data.get('unique_sources', 0))
-        with col3:
-            if analytics_data.get('last_clicked'):
-                st.metric("Last Click", analytics_data['last_clicked'])
-            else:
-                st.metric("Last Click", "No clicks yet")
+            # Quick Stats
+            st.subheader("📈 Quick Stats")
+            
+            # Calculate click rate per day
+            created_date = datetime.strptime(analytics_data['created_at'], '%Y-%m-%d %H:%M:%S')
+            days_active = (datetime.now() - created_date).days + 1
+            clicks_per_day = analytics_data['total_clicks'] / days_active
 
-        # Campaign Source breakdown
-        if analytics_data['utm_sources']:
+            metrics = {
+                "Total Clicks": analytics_data['total_clicks'],
+                "Days Active": days_active,
+                "Avg. Clicks/Day": f"{clicks_per_day:.1f}"
+            }
+            
+            for label, value in metrics.items():
+                st.metric(label=label, value=value)
+
+        # Traffic Sources Analysis
+        st.subheader("🔍 Traffic Analysis")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Source Analysis
             st.subheader("Traffic Sources")
-            utm_df = pd.DataFrame(
-                analytics_data['utm_sources'].items(),
-                columns=['Source', 'Clicks']
-            )
-            st.bar_chart(utm_df.set_index('Source'))
-            st.dataframe(utm_df, hide_index=True)
+            if analytics_data['utm_sources']:
+                utm_df = pd.DataFrame(
+                    analytics_data['utm_sources'].items(),
+                    columns=['Source', 'Clicks']
+                )
+                utm_df['Percentage'] = (utm_df['Clicks'] / utm_df['Clicks'].sum() * 100).round(1)
+                utm_df['Percentage'] = utm_df['Percentage'].astype(str) + '%'
+                
+                st.bar_chart(utm_df.set_index('Source')['Clicks'])
+                st.dataframe(utm_df, hide_index=True, use_container_width=True)
+            else:
+                st.info("No source data available yet")
 
-        # Campaign Medium breakdown
-        if analytics_data.get('utm_mediums'):
+        with col2:
+            # Medium Analysis
             st.subheader("Traffic Mediums")
-            utm_medium_df = pd.DataFrame(
-                analytics_data['utm_mediums'].items(),
-                columns=['Medium', 'Clicks']
+            if analytics_data.get('utm_mediums'):
+                utm_medium_df = pd.DataFrame(
+                    analytics_data['utm_mediums'].items(),
+                    columns=['Medium', 'Clicks']
+                )
+                utm_medium_df['Percentage'] = (utm_medium_df['Clicks'] / utm_medium_df['Clicks'].sum() * 100).round(1)
+                utm_medium_df['Percentage'] = utm_medium_df['Percentage'].astype(str) + '%'
+                
+                st.bar_chart(utm_medium_df.set_index('Medium')['Clicks'])
+                st.dataframe(utm_medium_df, hide_index=True, use_container_width=True)
+            else:
+                st.info("No medium data available yet")
+
+        # Time Analysis
+        if analytics_data.get('clicks_over_time'):
+            st.subheader("📅 Time Analysis")
+            time_df = pd.DataFrame(
+                analytics_data['clicks_over_time'].items(),
+                columns=['Date', 'Clicks']
             )
-            st.bar_chart(utm_medium_df.set_index('Medium'))
-            st.dataframe(utm_medium_df, hide_index=True)
+            time_df['Date'] = pd.to_datetime(time_df['Date'])
+            time_df = time_df.sort_values('Date')
+            
+            st.line_chart(time_df.set_index('Date'))
+            st.dataframe(time_df, hide_index=True, use_container_width=True)
+
+        # Campaign Performance
+        if analytics_data.get('campaigns'):
+            st.subheader("🎯 Campaign Performance")
+            campaign_df = pd.DataFrame(
+                analytics_data['campaigns'].items(),
+                columns=['Campaign', 'Clicks']
+            )
+            campaign_df['Percentage'] = (campaign_df['Clicks'] / campaign_df['Clicks'].sum() * 100).round(1)
+            campaign_df['Percentage'] = campaign_df['Percentage'].astype(str) + '%'
+            
+            st.bar_chart(campaign_df.set_index('Campaign')['Clicks'])
+            st.dataframe(campaign_df, hide_index=True, use_container_width=True)
+
+        # Export Options
+        st.subheader("📤 Export Data")
+        if st.button("Export Analytics Data"):
+            # Convert analytics data to CSV
+            export_data = {
+                'URL Info': url_info.to_dict('records'),
+                'Traffic Sources': utm_df.to_dict('records') if analytics_data['utm_sources'] else [],
+                'Traffic Mediums': utm_medium_df.to_dict('records') if analytics_data.get('utm_mediums') else []
+            }
+            st.download_button(
+                label="Download CSV",
+                data=pd.json_normalize(export_data).to_csv(index=False),
+                file_name=f"analytics_{analytics_data.get('short_code', 'data')}.csv",
+                mime="text/csv"
+            )
 
     def render_past_links(self, past_links: list):
         if not past_links:
@@ -80,6 +168,9 @@ class UI:
             return
 
         st.subheader("Your Short Links")
+        
+        # Sort links by creation date
+        past_links.sort(key=lambda x: datetime.strptime(x['created_at'], '%Y-%m-%d %H:%M:%S'), reverse=True)
         
         for link in past_links:
             with st.expander(f"📎 {link['short_code']} ({link['total_clicks']} clicks)"):
@@ -90,13 +181,17 @@ class UI:
                     st.code(shortened_url)
                     st.markdown(f"[Test link]({shortened_url})")
                 with col2:
-                    st.write("**Created:**", datetime.strptime(link['created_at'], 
-                            '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d'))
-                    st.metric("Clicks", link['total_clicks'])
+                    created_date = datetime.strptime(link['created_at'], '%Y-%m-%d %H:%M:%S')
+                    days_active = (datetime.now() - created_date).days + 1
+                    clicks_per_day = link['total_clicks'] / days_active
+                    
+                    st.metric("Created", created_date.strftime('%Y-%m-%d'))
+                    st.metric("Total Clicks", link['total_clicks'])
+                    st.metric("Clicks/Day", f"{clicks_per_day:.1f}")
                 
                 # Show analytics button
-                if st.button("View Analytics", key=f"analytics_{link['short_code']}"):
-                    analytics_data = self.url_shortener.analytics.get_analytics(link['short_code'])
+                if st.button("View Detailed Analytics", key=f"analytics_{link['short_code']}"):
+                    analytics_data = self.url_shortener.db.get_analytics_data(link['short_code'])
                     if analytics_data:
                         self.render_analytics(analytics_data)
                     else:
