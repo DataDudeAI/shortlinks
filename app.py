@@ -80,9 +80,20 @@ def main():
             shortener.analytics.track_click(path, {
                 'referrer': st.query_params.get('ref', '')
             })
-            st.markdown(f'<meta http-equiv="refresh" content="0;url={redirect_url}">', unsafe_allow_html=True)
+            # Use JavaScript for immediate redirect
+            st.markdown(
+                f"""
+                <script>
+                    window.location.href = "{redirect_url}";
+                </script>
+                """,
+                unsafe_allow_html=True
+            )
             st.write(f"Redirecting to {redirect_url}...")
-            return
+            st.stop()
+        else:
+            st.error("Invalid short URL")
+            st.stop()
 
     st.title('URL Shortener')
     
