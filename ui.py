@@ -194,3 +194,40 @@ class UI:
            - Term: Paid search keywords
            - Content: A/B testing content
         """) 
+
+    def render_recent_clicks(self, short_code: str):
+        """Display recent clicks for a URL"""
+        st.subheader("🕒 Recent Clicks")
+        
+        recent_clicks = self.url_shortener.analytics.get_recent_clicks(short_code)
+        
+        if not recent_clicks:
+            st.info("No clicks recorded yet")
+            return
+        
+        # Create a DataFrame for better display
+        df = pd.DataFrame(recent_clicks)
+        
+        # Format the timestamp
+        df['clicked_at'] = pd.to_datetime(df['clicked_at'])
+        df['time_ago'] = (datetime.now() - df['clicked_at']).apply(
+            lambda x: f"{int(x.total_seconds())} seconds ago" if x.total_seconds() < 60
+            else f"{int(x.total_seconds()/60)} minutes ago" if x.total_seconds() < 3600
+            else f"{int(x.total_seconds()/3600)} hours ago"
+        )
+        
+        # Display in an expandable container
+        with st.expander("View Recent Clicks", expanded=True):
+            for _, click in df.iterrows():
+                with st.container():
+                    col1, col2, col3 = st.columns([2,2,1])
+                    with col1:
+                        st.text(f"🕒 {click['time_ago']}")
+                        st.text(f"🌍 {click['country']}")
+                    with col2:
+                        st.text(f"📱 {click['device_type']}")
+                        st.text(f"🌐 {click['browser']} ({click['os']})")
+                    with col3:
+                        if click['utm_source'] != 'direct':
+                            st.text(f"📢 {click['utm_source']}")
+                    st.divider() 
