@@ -7,7 +7,6 @@ import string
 import random
 from urllib.parse import urlparse, parse_qs, urlencode
 from typing import Optional
-from datetime import datetime
 
 # Must be the first Streamlit command
 st.set_page_config(page_title="URL Shortener", layout="wide")
@@ -80,16 +79,29 @@ def main():
             shortener.analytics.track_click(path, {
                 'referrer': st.query_params.get('ref', '')
             })
-            # Use JavaScript for immediate redirect
-            js_code = f"""
-                <script>
-                    window.location.href = "{redirect_url}";
-                </script>
-            """
-            st.components.v1.html(js_code, height=0)
+            
+            # Combine all redirection methods for maximum compatibility
+            st.markdown(
+                f"""
+                <html>
+                    <head>
+                        <meta http-equiv="refresh" content="0; url={redirect_url}">
+                        <script>
+                            window.location.replace("{redirect_url}");
+                        </script>
+                    </head>
+                    <body>
+                        <p>Redirecting to <a href="{redirect_url}">{redirect_url}</a>...</p>
+                    </body>
+                </html>
+                """,
+                unsafe_allow_html=True
+            )
+            st.stop()
             return
         else:
             st.error("Invalid short URL")
+            st.stop()
             return
 
     st.title('URL Shortener')
@@ -104,51 +116,53 @@ def main():
             if short_code:
                 shortened_url = f"{BASE_URL}/?r={short_code}"
                 st.success('URL shortened successfully!')
-                st.code(shortened_url)
                 
-                # Add copy button
-                st.markdown(f"""
-                    <input type="text" value="{shortened_url}" id="shortUrl" style="position: absolute; left: -9999px;">
-                    <button onclick="copyUrl()" style="background-color: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">
-                        Copy URL
-                    </button>
-                    <script>
-                    function copyUrl() {{
-                        var copyText = document.getElementById("shortUrl");
-                        copyText.select();
-                        document.execCommand("copy");
-                        alert("URL copied to clipboard!");
-                    }}
-                    </script>
-                """, unsafe_allow_html=True)
+                # Display the shortened URL with copy functionality
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.code(shortened_url)
+                with col2:
+                    st.markdown(
+                        f"""
+                        <div style="margin-top: 10px;">
+                            <input type="text" value="{shortened_url}" id="shortUrl" 
+                                style="position: absolute; left: -9999px;">
+                            <button onclick="copyToClipboard()" 
+                                style="background-color: #4CAF50; color: white; 
+                                padding: 8px 16px; border: none; border-radius: 4px; 
+                                cursor: pointer; width: 100%;">
+                                Copy URL
+                            </button>
+                        </div>
+                        <script>
+                            function copyToClipboard() {{
+                                var copyText = document.getElementById("shortUrl");
+                                copyText.select();
+                                document.execCommand("copy");
+                                alert("URL copied to clipboard!");
+                            }}
+                        </script>
+                        """,
+                        unsafe_allow_html=True
+                    )
                 
-                # Add direct link
-                st.markdown(f"[Open URL]({shortened_url})")
+                # Add direct link with auto-redirect
+                st.markdown(
+                    f"""
+                    <a href="{shortened_url}" target="_blank" 
+                        style="display: inline-block; margin-top: 10px; 
+                        background-color: #1E88E5; color: white; 
+                        padding: 8px 16px; text-decoration: none; 
+                        border-radius: 4px;">
+                        Open URL ↗
+                    </a>
+                    """,
+                    unsafe_allow_html=True
+                )
 
     with tab2:
-        # Get all URLs from database
         past_links = shortener.db.get_all_urls()
-        if past_links:
-            for link in past_links:
-                with st.expander(f"📎 {link['short_code']} ({link['total_clicks']} clicks)"):
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
-                        st.write("**Original URL:**", link['original_url'])
-                        shortened_url = f"{BASE_URL}/?r={link['short_code']}"
-                        st.code(shortened_url)
-                        st.markdown(f"[Test link]({shortened_url})")
-                    with col2:
-                        st.write("**Created:**", datetime.strptime(link['created_at'], 
-                                '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d'))
-                        st.write("**Clicks:**", link['total_clicks'])
-                    
-                    # Show analytics button
-                    if st.button("View Analytics", key=f"analytics_{link['short_code']}"):
-                        analytics_data = shortener.db.get_analytics_data(link['short_code'])
-                        if analytics_data:
-                            shortener.ui.render_analytics(analytics_data)
-        else:
-            st.info("No links created yet. Create your first short link in the 'Create Short URL' tab!")
+        shortener.ui.render_past_links(past_links)
 
 if __name__ == "__main__":
     main() 
