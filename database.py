@@ -10,7 +10,7 @@ class Database:
         self.init_db()
         
     def init_db(self):
-        """Initialize database if it doesn't exist"""
+        """Initialize database with enhanced analytics tracking"""
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         
@@ -34,6 +34,12 @@ class Database:
                 utm_medium TEXT DEFAULT 'none',
                 utm_campaign TEXT DEFAULT 'no campaign',
                 referrer TEXT,
+                user_agent TEXT,
+                ip_address TEXT,
+                country TEXT,
+                device_type TEXT,
+                browser TEXT,
+                os TEXT,
                 FOREIGN KEY (short_code) REFERENCES urls (short_code)
             )
         ''')
@@ -41,6 +47,9 @@ class Database:
         # Create indexes if they don't exist
         c.execute('''CREATE INDEX IF NOT EXISTS idx_short_code ON urls (short_code)''')
         c.execute('''CREATE INDEX IF NOT EXISTS idx_analytics_short_code ON analytics (short_code)''')
+        c.execute('''CREATE INDEX IF NOT EXISTS idx_clicked_at ON analytics (clicked_at)''')
+        c.execute('''CREATE INDEX IF NOT EXISTS idx_country ON analytics (country)''')
+        c.execute('''CREATE INDEX IF NOT EXISTS idx_device_type ON analytics (device_type)''')
         
         conn.commit()
         conn.close()
