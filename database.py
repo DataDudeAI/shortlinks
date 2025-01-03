@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import os
 
 class Database:
@@ -223,5 +223,37 @@ class Database:
                 'campaigns': campaigns,
                 'clicks_over_time': clicks_over_time
             }
+        finally:
+            conn.close()
+
+    def get_clicks(self, short_code: str) -> List[Dict[str, Any]]:
+        """Get all clicks for a specific short code"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('''
+                SELECT 
+                    clicked_at,
+                    utm_source,
+                    utm_medium,
+                    utm_campaign,
+                    referrer
+                FROM analytics
+                WHERE short_code = ?
+                ORDER BY clicked_at DESC
+            ''', (short_code,))
+            
+            clicks = []
+            for row in c.fetchall():
+                clicks.append({
+                    'clicked_at': row[0],
+                    'utm_source': row[1],
+                    'utm_medium': row[2],
+                    'utm_campaign': row[3],
+                    'referrer': row[4]
+                })
+            
+            return clicks
+            
         finally:
             conn.close() 
