@@ -30,9 +30,10 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 short_code TEXT NOT NULL,
                 clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                utm_source TEXT,
-                utm_medium TEXT,
-                utm_campaign TEXT,
+                utm_source TEXT DEFAULT 'direct',
+                utm_medium TEXT DEFAULT 'none',
+                utm_campaign TEXT DEFAULT 'no campaign',
+                referrer TEXT,
                 FOREIGN KEY (short_code) REFERENCES urls (short_code)
             )
         ''')
@@ -92,13 +93,15 @@ class Database:
             # Insert analytics data
             c.execute('''
                 INSERT INTO analytics (
-                    short_code, utm_source, utm_medium, utm_campaign
-                ) VALUES (?, ?, ?, ?)
+                    short_code, clicked_at, utm_source, utm_medium, utm_campaign, referrer
+                ) VALUES (?, ?, ?, ?, ?, ?)
             ''', (
                 analytics_data['short_code'],
-                analytics_data.get('utm_source'),
-                analytics_data.get('utm_medium'),
-                analytics_data.get('utm_campaign')
+                analytics_data.get('clicked_at', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+                analytics_data.get('utm_source', 'direct'),
+                analytics_data.get('utm_medium', 'none'),
+                analytics_data.get('utm_campaign', 'no campaign'),
+                analytics_data.get('referrer', '')
             ))
             
             # Update total clicks
