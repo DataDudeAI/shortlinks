@@ -231,3 +231,115 @@ class UI:
                         if click['utm_source'] != 'direct':
                             st.text(f"📢 {click['utm_source']}")
                     st.divider() 
+
+    def render_analytics_tab(self, urls: list):
+        """Enhanced analytics tab with clickable links and detailed stats"""
+        st.header("📊 Analytics Dashboard")
+        
+        if not urls:
+            st.info("No links created yet. Create your first short link in the 'Create Short URL' tab!")
+            return
+        
+        # Sort URLs by total clicks
+        urls.sort(key=lambda x: x['total_clicks'], reverse=True)
+        
+        # Summary metrics
+        total_clicks = sum(url['total_clicks'] for url in urls)
+        total_links = len(urls)
+        avg_clicks = total_clicks / total_links if total_links > 0 else 0
+        
+        # Display overall metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Links", total_links)
+        with col2:
+            st.metric("Total Clicks", total_clicks)
+        with col3:
+            st.metric("Average Clicks/Link", f"{avg_clicks:.1f}")
+        
+        # Links table with analytics
+        st.subheader("Your Short Links")
+        for url in urls:
+            with st.expander(f"🔗 {url['short_code']} ({url['total_clicks']} clicks)", expanded=False):
+                cols = st.columns([3, 2])
+                
+                with cols[0]:
+                    st.markdown("**Original URL:**")
+                    st.write(url['original_url'])
+                    
+                    shortened_url = f"{BASE_URL}/?r={url['short_code']}"
+                    st.markdown("**Short URL:**")
+                    st.code(shortened_url)
+                    
+                    # Clickable buttons
+                    col1, col2 = st.columns([1, 2])
+                    with col1:
+                        if st.button("📋 Copy", key=f"copy_{url['short_code']}"):
+                            st.write("Copied to clipboard!")
+                    with col2:
+                        st.markdown(f"[🔗 Open Link]({shortened_url})")
+                
+                with cols[1]:
+                    created_date = datetime.strptime(url['created_at'], '%Y-%m-%d %H:%M:%S')
+                    days_active = (datetime.now() - created_date).days + 1
+                    clicks_per_day = url['total_clicks'] / days_active
+                    
+                    st.metric("Created", created_date.strftime('%Y-%m-%d'))
+                    st.metric("Days Active", days_active)
+                    st.metric("Clicks/Day", f"{clicks_per_day:.1f}")
+                
+                # Get detailed analytics
+                analytics_data = self.url_shortener.db.get_analytics_data(url['short_code'])
+                if analytics_data:
+                    # Traffic Sources
+                    st.subheader("📈 Traffic Analysis")
+                    source_cols = st.columns(3)
+                    
+                    with source_cols[0]:
+                        self.render_pie_chart(
+                            analytics_data.get('utm_sources', {}),
+                            "Traffic Sources"
+                        )
+                    
+                    with source_cols[1]:
+                        self.render_pie_chart(
+                            analytics_data.get('devices', {}),
+                            "Devices"
+                        )
+                    
+                    with source_cols[2]:
+                        self.render_pie_chart(
+                            analytics_data.get('browsers', {}),
+                            "Browsers"
+                        )
+                    
+                    # Recent Activity
+                    st.subheader("🕒 Recent Activity")
+                    self.render_recent_clicks(url['short_code'])
+                    
+                    # Success Rate
+                    successful_redirects = analytics_data.get('successful_redirects', 0)
+                    total_attempts = analytics_data.get('total_attempts', 0)
+                    if total_attempts > 0:
+                        success_rate = (successful_redirects / total_attempts) * 100
+                        st.metric("Redirect Success Rate", f"{success_rate:.1f}%")
+                    
+                    # Export Analytics
+                    if st.button("📊 Export Analytics", key=f"export_{url['short_code']}"):
+                        csv_data = self.generate_analytics_csv(analytics_data)
+                        st.download_button(
+                            "Download CSV",
+                            csv_data,
+                            file_name=f"analytics_{url['short_code']}.csv",
+                            mime="text/csv"
+                        )
+
+    def render_pie_chart(self, data: Dict[str, int], title: str):
+        """Helper method to render pie charts"""
+        if data:
+            df = pd.DataFrame(list(data.items()), columns=['Label', 'Value'])
+            fig = px.pie(df, values='Value', names='Label', title=title)
+            fig.update_layout(showlegend=True, height=300)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info(f"No {title.lower()} data available") 
