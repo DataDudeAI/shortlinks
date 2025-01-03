@@ -83,9 +83,14 @@ class Analytics:
             return None
 
     def get_redirect_url(self, short_code: str) -> str:
+        """Get the redirect URL and handle it properly"""
         url_info = self.db.get_url_info(short_code)
         if url_info:
-            return url_info['original_url']
+            original_url = url_info['original_url']
+            # Ensure URL has proper protocol
+            if not original_url.startswith(('http://', 'https://')):
+                original_url = 'https://' + original_url
+            return original_url
         return None
 
     def get_past_links(self) -> List[Dict[str, Any]]:
