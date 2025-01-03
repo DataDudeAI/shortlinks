@@ -10,6 +10,29 @@ from typing import Optional
 from datetime import datetime
 import webbrowser
 import time
+import logging
+from logging.handlers import RotatingFileHandler
+
+# Setup logging
+logging.basicConfig(
+    handlers=[RotatingFileHandler('url_shortener.log', maxBytes=100000, backupCount=5)],
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s: %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Add error handling middleware
+@st.cache_resource
+def handle_error(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error in {func.__name__}: {str(e)}")
+            st.error("An unexpected error occurred. Please try again later.")
+            if st.session_state.get('debug_mode'):
+                st.exception(e)
+    return wrapper
 
 # Must be the first Streamlit command
 st.set_page_config(page_title="URL Shortener", layout="wide")
