@@ -36,6 +36,9 @@ class URLShortener:
         if not url.startswith(('http://', 'https://')):
             url = 'https://' + url
             
+        # Remove any quotes that might cause issues
+        url = url.replace('"', '').replace("'", '')
+        
         return url
 
     def add_utm_parameters(self, url: str, utm_params: dict) -> str:
@@ -105,51 +108,31 @@ def main():
             # Ensure the URL is properly formatted
             redirect_url = shortener.clean_url(redirect_url)
             
-            # Direct redirection using HTML and JavaScript
-            html_content = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Redirecting...</title>
-                </head>
-                <body>
-                    <h3>Redirecting to your destination...</h3>
-                    <script>
-                        // Try multiple redirection methods
-                        function redirect() {{
-                            try {{
-                                // Method 1
-                                window.top.location.replace("{redirect_url}");
-                            }} catch (e1) {{
-                                try {{
-                                    // Method 2
-                                    window.top.location.href = "{redirect_url}";
-                                }} catch (e2) {{
-                                    try {{
-                                        // Method 3
-                                        window.location.href = "{redirect_url}";
-                                    }} catch (e3) {{
-                                        // Method 4 - Last resort
-                                        document.location.href = "{redirect_url}";
-                                    }}
-                                }}
-                            }}
-                        }}
-                        // Execute immediately
-                        redirect();
-                        // Backup timeout
-                        setTimeout(redirect, 100);
-                    </script>
-                    <noscript>
-                        <meta http-equiv="refresh" content="0;url={redirect_url}">
-                    </noscript>
-                    <p>If you are not redirected automatically, <a href="{redirect_url}" target="_top">click here</a>.</p>
-                </body>
-                </html>
-            """
+            # Simple meta refresh
+            st.markdown(
+                f"""
+                <meta http-equiv="refresh" content="0; url='{redirect_url}'">
+                """,
+                unsafe_allow_html=True
+            )
             
-            # Serve the HTML directly
-            st.components.v1.html(html_content, height=100, scrolling=False)
+            # Show loading message
+            st.info(f"Opening {redirect_url}")
+            
+            # Direct link as backup
+            st.markdown(
+                f"""
+                <a href="{redirect_url}" target="_blank" 
+                style="display: inline-block; padding: 10px 20px; 
+                background-color: #1E88E5; color: white; 
+                text-decoration: none; border-radius: 5px; 
+                margin-top: 20px;">
+                Click here to open directly ↗
+                </a>
+                """,
+                unsafe_allow_html=True
+            )
+            
             st.stop()
             return
         else:
@@ -200,7 +183,18 @@ def main():
                     )
                 
                 # Add direct link
-                st.markdown(f"[Click to visit]({shortened_url})")
+                st.markdown(
+                    f"""
+                    <a href="{shortened_url}" target="_blank" 
+                    style="display: inline-block; padding: 10px 20px; 
+                    background-color: #1E88E5; color: white; 
+                    text-decoration: none; border-radius: 5px; 
+                    margin-top: 20px;">
+                    Test this link ↗
+                    </a>
+                    """,
+                    unsafe_allow_html=True
+                )
 
     with tab2:
         past_links = shortener.db.get_all_urls()
