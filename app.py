@@ -105,22 +105,9 @@ def main():
             # Ensure the URL is properly formatted
             redirect_url = shortener.clean_url(redirect_url)
             
-            # Simple JavaScript redirect
-            st.markdown(
-                f"""
-                <script>
-                    window.location = "{redirect_url}";
-                </script>
-                <noscript>
-                    <meta http-equiv="refresh" content="0; url={redirect_url}">
-                </noscript>
-                """,
-                unsafe_allow_html=True
-            )
-            
-            # Fallback message
-            st.markdown(f"[Click here if not redirected automatically]({redirect_url})")
-            st.stop()
+            # Direct redirect using Streamlit
+            st.write(f"Redirecting to {redirect_url}")
+            st.switch_page(redirect_url)
             return
         else:
             st.error("Invalid or expired short URL")
@@ -169,19 +156,8 @@ def main():
                         unsafe_allow_html=True
                     )
                 
-                # Add direct link with auto-redirect
-                st.markdown(
-                    f"""
-                    <a href="{shortened_url}" target="_blank" 
-                        style="display: inline-block; margin-top: 10px; 
-                        background-color: #1E88E5; color: white; 
-                        padding: 8px 16px; text-decoration: none; 
-                        border-radius: 4px;">
-                        Open URL ↗
-                    </a>
-                    """,
-                    unsafe_allow_html=True
-                )
+                # Add direct link
+                st.markdown(f"[Click to visit]({redirect_url})")
 
     with tab2:
         past_links = shortener.db.get_all_urls()
