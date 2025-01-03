@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from typing import Dict, Any
 from datetime import datetime
+import io
 
 BASE_URL = "https://shortlinksnandan.streamlit.app"
 
@@ -149,17 +150,49 @@ class UI:
         # Export Options
         st.subheader("📤 Export Data")
         if st.button("Export Analytics Data"):
-            # Convert analytics data to CSV
+            # Prepare data for export
             export_data = {
-                'URL Info': url_info.to_dict('records'),
-                'Traffic Sources': utm_df.to_dict('records') if analytics_data['utm_sources'] else [],
-                'Traffic Mediums': utm_medium_df.to_dict('records') if analytics_data.get('utm_mediums') else []
+                'Link Details': {
+                    'Original URL': analytics_data['original_url'],
+                    'Short Code': analytics_data.get('short_code', 'N/A'),
+                    'Created Date': analytics_data['created_at'],
+                    'Total Clicks': analytics_data['total_clicks'],
+                    'Last Click': analytics_data.get('last_clicked', 'No clicks yet'),
+                    'Unique Sources': analytics_data.get('unique_sources', 0),
+                    'Unique Mediums': analytics_data.get('unique_mediums', 0)
+                },
+                'Traffic Sources': analytics_data.get('utm_sources', {}),
+                'Traffic Mediums': analytics_data.get('utm_mediums', {}),
+                'Campaigns': analytics_data.get('campaigns', {}),
+                'Daily Clicks': analytics_data.get('clicks_over_time', {})
             }
+            
+            # Convert to DataFrame
+            df_details = pd.DataFrame([export_data['Link Details']])
+            df_sources = pd.DataFrame(export_data['Traffic Sources'].items(), 
+                                    columns=['Source', 'Clicks'])
+            df_mediums = pd.DataFrame(export_data['Traffic Mediums'].items(), 
+                                    columns=['Medium', 'Clicks'])
+            df_campaigns = pd.DataFrame(export_data['Campaigns'].items(), 
+                                      columns=['Campaign', 'Clicks'])
+            df_daily = pd.DataFrame(export_data['Daily Clicks'].items(), 
+                                  columns=['Date', 'Clicks'])
+            
+            # Create Excel file in memory
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df_details.to_excel(writer, sheet_name='Link Details', index=False)
+                df_sources.to_excel(writer, sheet_name='Traffic Sources', index=False)
+                df_mediums.to_excel(writer, sheet_name='Traffic Mediums', index=False)
+                df_campaigns.to_excel(writer, sheet_name='Campaigns', index=False)
+                df_daily.to_excel(writer, sheet_name='Daily Clicks', index=False)
+            
+            # Offer download
             st.download_button(
-                label="Download CSV",
-                data=pd.json_normalize(export_data).to_csv(index=False),
-                file_name=f"analytics_{analytics_data.get('short_code', 'data')}.csv",
-                mime="text/csv"
+                label="Download Excel Report",
+                data=output.getvalue(),
+                file_name=f"analytics_{analytics_data.get('short_code', 'data')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
     def render_past_links(self, past_links: list):
