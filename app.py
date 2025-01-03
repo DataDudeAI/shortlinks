@@ -12,6 +12,9 @@ from datetime import datetime
 # Must be the first Streamlit command
 st.set_page_config(page_title="URL Shortener", layout="wide")
 
+# Set the base URL for the deployed app
+BASE_URL = "https://shortlinksnandan.streamlit.app"
+
 class URLShortener:
     def __init__(self):
         self.db = Database()
@@ -68,7 +71,7 @@ class URLShortener:
 def main():
     shortener = URLShortener()
     
-    # Check if this is a redirect request using new query_params
+    # Check if this is a redirect request
     path = st.query_params.get('r')
     if path:
         redirect_url = shortener.analytics.get_redirect_url(path)
@@ -91,7 +94,7 @@ def main():
         if form_data:
             short_code = shortener.create_short_url(form_data)
             if short_code:
-                shortened_url = f"http://localhost:8501/?r={short_code}"
+                shortened_url = f"{BASE_URL}/?r={short_code}"
                 st.success('URL shortened successfully!')
                 st.code(shortened_url)
                 st.markdown(f"[Test your link]({shortened_url})")
@@ -105,7 +108,7 @@ def main():
                     col1, col2 = st.columns([3, 1])
                     with col1:
                         st.write("**Original URL:**", link['original_url'])
-                        shortened_url = f"http://localhost:8501/?r={link['short_code']}"
+                        shortened_url = f"{BASE_URL}/?r={link['short_code']}"
                         st.code(shortened_url)
                         st.markdown(f"[Test link]({shortened_url})")
                     with col2:
