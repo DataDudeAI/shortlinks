@@ -105,17 +105,51 @@ def main():
             # Ensure the URL is properly formatted
             redirect_url = shortener.clean_url(redirect_url)
             
-            # Use JavaScript for redirection
-            st.markdown(
-                f"""
-                <script>
-                    window.location.href = "{redirect_url}";
-                </script>
-                """,
-                unsafe_allow_html=True
-            )
-            st.write(f"Redirecting to {redirect_url}")
-            st.markdown(f"[Click here if not redirected]({redirect_url})")
+            # Direct redirection using HTML and JavaScript
+            html_content = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Redirecting...</title>
+                </head>
+                <body>
+                    <h3>Redirecting to your destination...</h3>
+                    <script>
+                        // Try multiple redirection methods
+                        function redirect() {{
+                            try {{
+                                // Method 1
+                                window.top.location.replace("{redirect_url}");
+                            }} catch (e1) {{
+                                try {{
+                                    // Method 2
+                                    window.top.location.href = "{redirect_url}";
+                                }} catch (e2) {{
+                                    try {{
+                                        // Method 3
+                                        window.location.href = "{redirect_url}";
+                                    }} catch (e3) {{
+                                        // Method 4 - Last resort
+                                        document.location.href = "{redirect_url}";
+                                    }}
+                                }}
+                            }}
+                        }}
+                        // Execute immediately
+                        redirect();
+                        // Backup timeout
+                        setTimeout(redirect, 100);
+                    </script>
+                    <noscript>
+                        <meta http-equiv="refresh" content="0;url={redirect_url}">
+                    </noscript>
+                    <p>If you are not redirected automatically, <a href="{redirect_url}" target="_top">click here</a>.</p>
+                </body>
+                </html>
+            """
+            
+            # Serve the HTML directly
+            st.components.v1.html(html_content, height=100, scrolling=False)
             st.stop()
             return
         else:
