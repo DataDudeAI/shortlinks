@@ -5,7 +5,7 @@ from ui import UI
 import validators
 import string
 import random
-from urllib.parse import urlparse, parse_qs, urlencode, urljoin
+from urllib.parse import urlparse, parse_qs, urlencode
 from typing import Optional
 
 # Must be the first Streamlit command
@@ -37,6 +37,22 @@ class URLShortener:
             url = 'https://' + url
             
         return url
+
+    def add_utm_parameters(self, url: str, utm_params: dict) -> str:
+        """Add UTM parameters to URL"""
+        parsed_url = urlparse(url)
+        query_dict = parse_qs(parsed_url.query)
+        
+        # Add UTM parameters if they exist
+        for key, value in utm_params.items():
+            if value:
+                query_dict[key] = [value]
+        
+        # Rebuild query string
+        new_query = urlencode(query_dict, doseq=True)
+        
+        # Rebuild URL
+        return parsed_url._replace(query=new_query).geturl()
 
     def create_short_url(self, url_data: dict) -> Optional[str]:
         if not url_data.get('url'):
