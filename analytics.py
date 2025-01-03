@@ -1,36 +1,47 @@
 from typing import Dict, Any
 from datetime import datetime
 import pandas as pd
+from user_agents import parse
 
 class Analytics:
     def __init__(self, database):
         self.db = database
 
-    def track_click(self, short_code: str, click_data: Dict[str, Any]):
-        """Track a click on a shortened URL"""
+    def track_click(self, short_code: str, request_data: Dict[str, Any]):
+        """Enhanced click tracking with detailed analytics"""
         try:
-            # Get the original URL info
-            url_info = self.db.get_url_info(short_code)
-            if not url_info:
-                return
+            # Extract user agent info
+            user_agent = request_data.get('User-Agent', '')
+            user_agent_parser = parse(user_agent)
             
-            # Parse UTM parameters from the original URL
-            utm_params = self.parse_utm_parameters(url_info['original_url'])
+            # Get geolocation data from IP
+            ip_address = request_data.get('ip', '')
+            geo_data = self.get_geo_data(ip_address)
             
-            # Save click data
+            # Prepare analytics data
             analytics_data = {
                 'short_code': short_code,
                 'clicked_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'utm_source': utm_params.get('utm_source', 'direct'),
-                'utm_medium': utm_params.get('utm_medium', 'none'),
-                'utm_campaign': utm_params.get('utm_campaign', 'none'),
-                'referrer': click_data.get('referrer', '')
+                'utm_source': request_data.get('utm_source', 'direct'),
+                'utm_medium': request_data.get('utm_medium', 'none'),
+                'utm_campaign': request_data.get('utm_campaign', 'no campaign'),
+                'referrer': request_data.get('referrer', ''),
+                'user_agent': user_agent,
+                'ip_address': ip_address,
+                'country': geo_data.get('country', 'Unknown'),
+                'device_type': user_agent_parser.device.family,
+                'browser': user_agent_parser.browser.family,
+                'os': user_agent_parser.os.family
             }
             
+            # Save to database
             self.db.save_analytics(analytics_data)
             
+            # Update cache for real-time analytics
+            self.update_realtime_cache(short_code, analytics_data)
+            
         except Exception as e:
-            print(f"Error tracking click: {str(e)}")
+            logger.error(f"Error tracking click: {str(e)}")
 
     def get_analytics(self, short_code: str) -> Dict[str, Any]:
         """Get analytics data for a specific short code"""
