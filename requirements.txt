@@ -5,5 +5,5 @@ urllib3
 typing
 plotly
 user-agents
-geoip2
+ip2geotools
 pandas 
