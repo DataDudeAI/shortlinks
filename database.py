@@ -155,90 +155,88 @@ class Database:
             conn.close()
 
     def get_analytics_data(self, short_code: str) -> Dict[str, Any]:
+        """Get enhanced analytics data for a specific short code"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Get URL info first
+            # Get basic URL info
             c.execute('''
-                SELECT original_url, created_at, total_clicks, short_code
+                SELECT original_url, created_at, total_clicks
                 FROM urls 
                 WHERE short_code = ?
             ''', (short_code,))
-            url_result = c.fetchone()
+            url_info = c.fetchone()
             
-            if not url_result:
+            if not url_info:
                 return None
 
-            # Get click analytics
+            # Get unique visitors count
             c.execute('''
-                SELECT 
-                    COUNT(*) as total_clicks,
-                    MAX(clicked_at) as last_clicked,
-                    COUNT(DISTINCT utm_source) as unique_sources,
-                    COUNT(DISTINCT utm_medium) as unique_mediums,
-                    COUNT(DISTINCT utm_campaign) as unique_campaigns
-                FROM analytics
+                SELECT COUNT(DISTINCT ip_address) 
+                FROM analytics 
                 WHERE short_code = ?
             ''', (short_code,))
-            
-            analytics = c.fetchone()
-            
-            # Get UTM source breakdown
+            unique_visitors = c.fetchone()[0]
+
+            # Get successful redirections count
             c.execute('''
-                SELECT utm_source, COUNT(*) as count
-                FROM analytics
-                WHERE short_code = ? AND utm_source IS NOT NULL
-                GROUP BY utm_source
+                SELECT COUNT(*) 
+                FROM analytics 
+                WHERE short_code = ? AND successful = TRUE
             ''', (short_code,))
-            
-            utm_sources = dict(c.fetchall() or [])
-            
-            # Get UTM medium breakdown
+            successful_redirects = c.fetchone()[0]
+
+            # Get bounce rate (single page visits)
             c.execute('''
-                SELECT utm_medium, COUNT(*) as count
-                FROM analytics
-                WHERE short_code = ? AND utm_medium IS NOT NULL
-                GROUP BY utm_medium
+                SELECT COUNT(DISTINCT ip_address) 
+                FROM analytics 
+                WHERE short_code = ? 
+                GROUP BY ip_address 
+                HAVING COUNT(*) = 1
             ''', (short_code,))
-            
-            utm_mediums = dict(c.fetchall() or [])
-            
-            # Get campaign breakdown
-            c.execute('''
-                SELECT utm_campaign, COUNT(*) as count
-                FROM analytics
-                WHERE short_code = ? AND utm_campaign IS NOT NULL
-                GROUP BY utm_campaign
-            ''', (short_code,))
-            
-            campaigns = dict(c.fetchall() or [])
-            
-            # Get clicks over time
+            bounces = len(c.fetchall())
+
+            # Get recent clicks with all details
             c.execute('''
                 SELECT 
-                    date(clicked_at) as click_date,
-                    COUNT(*) as clicks
+                    clicked_at,
+                    country,
+                    device_type,
+                    browser,
+                    os,
+                    utm_source,
+                    utm_medium,
+                    utm_campaign,
+                    successful
                 FROM analytics
                 WHERE short_code = ?
-                GROUP BY date(clicked_at)
-                ORDER BY click_date
+                ORDER BY clicked_at DESC
+                LIMIT 10
             ''', (short_code,))
             
-            clicks_over_time = dict(c.fetchall() or [])
-            
+            recent_clicks = []
+            for row in c.fetchall():
+                recent_clicks.append({
+                    'clicked_at': row[0],
+                    'country': row[1],
+                    'device_type': row[2],
+                    'browser': row[3],
+                    'os': row[4],
+                    'utm_source': row[5],
+                    'utm_medium': row[6],
+                    'utm_campaign': row[7],
+                    'successful': row[8]
+                })
+
             return {
-                'original_url': url_result[0],
-                'created_at': url_result[1],
-                'total_clicks': url_result[2],
-                'short_code': url_result[3],
-                'last_clicked': analytics[1],
-                'unique_sources': analytics[2],
-                'unique_mediums': analytics[3],
-                'unique_campaigns': analytics[4],
-                'utm_sources': utm_sources,
-                'utm_mediums': utm_mediums,
-                'campaigns': campaigns,
-                'clicks_over_time': clicks_over_time
+                'original_url': url_info[0],
+                'created_at': url_info[1],
+                'total_clicks': url_info[2],
+                'unique_visitors': unique_visitors,
+                'successful_redirects': successful_redirects,
+                'bounces': bounces,
+                'recent_clicks': recent_clicks,
+                'short_code': short_code
             }
         finally:
             conn.close()
