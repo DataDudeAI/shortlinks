@@ -83,9 +83,4 @@ class Analytics:
         url_info = self.db.get_url_info(short_code)
         if url_info:
             return url_info['original_url']
-        return None
-
-    def __del__(self):
-        """Clean up GeoIP reader on object destruction"""
-        if self.geo_reader:
-            self.geo_reader.close() 
+        return None 
