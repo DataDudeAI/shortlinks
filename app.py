@@ -105,34 +105,21 @@ def main():
             # Ensure the URL is properly formatted
             redirect_url = shortener.clean_url(redirect_url)
             
-            # Multiple redirection methods for maximum compatibility
+            # Simple JavaScript redirect
             st.markdown(
                 f"""
-                <!DOCTYPE html>
-                <html>
-                    <head>
-                        <meta http-equiv="refresh" content="0; url={redirect_url}">
-                    </head>
-                    <body>
-                        <p>Redirecting to your destination...</p>
-                        <script>
-                            // Method 1: Direct location change
-                            window.location.href = "{redirect_url}";
-                            
-                            // Method 2: Top location change
-                            window.top.location.href = "{redirect_url}";
-                            
-                            // Method 3: Delayed redirect as fallback
-                            setTimeout(function() {{
-                                window.location.replace("{redirect_url}");
-                            }}, 100);
-                        </script>
-                        <p>If you are not redirected, <a href="{redirect_url}" target="_blank">click here</a>.</p>
-                    </body>
-                </html>
+                <script>
+                    window.location = "{redirect_url}";
+                </script>
+                <noscript>
+                    <meta http-equiv="refresh" content="0; url={redirect_url}">
+                </noscript>
                 """,
                 unsafe_allow_html=True
             )
+            
+            # Fallback message
+            st.markdown(f"[Click here if not redirected automatically]({redirect_url})")
             st.stop()
             return
         else:
