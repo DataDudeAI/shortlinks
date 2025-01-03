@@ -164,25 +164,19 @@ def main():
                 )
 
     with tab2:
-        st.subheader("📊 Analytics")
+        st.subheader("📊 Analytics Dashboard")
         urls = shortener.db.get_all_urls()
         if urls:
+            # Sort URLs by total clicks
+            urls.sort(key=lambda x: x['total_clicks'], reverse=True)
+            
             for url in urls:
-                with st.expander(f"🔗 {url['short_code']} ({url['total_clicks']} clicks)"):
-                    st.write("**Original URL:**", url['original_url'])
-                    st.write("**Created:**", url['created_at'])
-                    st.write("**Total Clicks:**", url['total_clicks'])
-                    
-                    # Get detailed analytics
+                with st.expander(f"🔗 {url['short_code']} - {url['total_clicks']} clicks"):
                     analytics_data = shortener.analytics.get_analytics(url['short_code'])
                     if analytics_data:
-                        st.write("**Last Click:**", analytics_data.get('last_clicked', 'Never'))
-                        
-                        # Show traffic sources
-                        if analytics_data.get('utm_sources'):
-                            st.write("**Traffic Sources:**")
-                            for source, count in analytics_data['utm_sources'].items():
-                                st.write(f"- {source}: {count} clicks")
+                        shortener.ui.render_analytics(analytics_data)
+                    else:
+                        st.info("No analytics data available for this link yet.")
         else:
             st.info("No links created yet. Create your first short link in the 'Create Short URL' tab!")
 
