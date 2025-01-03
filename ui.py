@@ -149,9 +149,10 @@ class UI:
 
         # Export Options
         st.subheader("📤 Export Data")
-        if st.button("Export Analytics Data"):
-            # Prepare data for export
-            export_data = {
+        
+        try:
+            # Prepare data for CSV export
+            export_dict = {
                 'Link Details': {
                     'Original URL': analytics_data['original_url'],
                     'Short Code': analytics_data.get('short_code', 'N/A'),
@@ -160,40 +161,46 @@ class UI:
                     'Last Click': analytics_data.get('last_clicked', 'No clicks yet'),
                     'Unique Sources': analytics_data.get('unique_sources', 0),
                     'Unique Mediums': analytics_data.get('unique_mediums', 0)
-                },
-                'Traffic Sources': analytics_data.get('utm_sources', {}),
-                'Traffic Mediums': analytics_data.get('utm_mediums', {}),
-                'Campaigns': analytics_data.get('campaigns', {}),
-                'Daily Clicks': analytics_data.get('clicks_over_time', {})
+                }
             }
-            
+
+            # Add traffic sources
+            if analytics_data.get('utm_sources'):
+                export_dict['Traffic Sources'] = analytics_data['utm_sources']
+
+            # Add traffic mediums
+            if analytics_data.get('utm_mediums'):
+                export_dict['Traffic Mediums'] = analytics_data['utm_mediums']
+
             # Convert to DataFrame
-            df_details = pd.DataFrame([export_data['Link Details']])
-            df_sources = pd.DataFrame(export_data['Traffic Sources'].items(), 
-                                    columns=['Source', 'Clicks'])
-            df_mediums = pd.DataFrame(export_data['Traffic Mediums'].items(), 
-                                    columns=['Medium', 'Clicks'])
-            df_campaigns = pd.DataFrame(export_data['Campaigns'].items(), 
-                                      columns=['Campaign', 'Clicks'])
-            df_daily = pd.DataFrame(export_data['Daily Clicks'].items(), 
-                                  columns=['Date', 'Clicks'])
+            df_details = pd.DataFrame([export_dict['Link Details']])
             
-            # Create Excel file in memory
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df_details.to_excel(writer, sheet_name='Link Details', index=False)
-                df_sources.to_excel(writer, sheet_name='Traffic Sources', index=False)
-                df_mediums.to_excel(writer, sheet_name='Traffic Mediums', index=False)
-                df_campaigns.to_excel(writer, sheet_name='Campaigns', index=False)
-                df_daily.to_excel(writer, sheet_name='Daily Clicks', index=False)
+            # Create CSV data
+            csv_data = io.StringIO()
+            df_details.to_csv(csv_data, index=False)
             
-            # Offer download
+            # Add traffic data if available
+            if 'Traffic Sources' in export_dict:
+                csv_data.write('\n\nTraffic Sources\n')
+                pd.DataFrame(list(export_dict['Traffic Sources'].items()), 
+                           columns=['Source', 'Clicks']).to_csv(csv_data, index=False)
+            
+            if 'Traffic Mediums' in export_dict:
+                csv_data.write('\n\nTraffic Mediums\n')
+                pd.DataFrame(list(export_dict['Traffic Mediums'].items()), 
+                           columns=['Medium', 'Clicks']).to_csv(csv_data, index=False)
+
+            # Offer download button
             st.download_button(
-                label="Download Excel Report",
-                data=output.getvalue(),
-                file_name=f"analytics_{analytics_data.get('short_code', 'data')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                label="📥 Download Analytics Report",
+                data=csv_data.getvalue(),
+                file_name=f"analytics_{analytics_data.get('short_code', 'data')}_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                key='download_analytics'
             )
+
+        except Exception as e:
+            st.error(f"Error generating export: {str(e)}")
 
     def render_past_links(self, past_links: list):
         if not past_links:
