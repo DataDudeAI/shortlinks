@@ -25,6 +25,10 @@ class Database:
             )
         ''')
         
+        # Drop existing analytics table if it exists
+        c.execute('DROP TABLE IF EXISTS analytics')
+        
+        # Create new analytics table with all fields
         c.execute('''
             CREATE TABLE IF NOT EXISTS analytics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,7 +48,7 @@ class Database:
             )
         ''')
         
-        # Create indexes if they don't exist
+        # Create indexes for better performance
         c.execute('''CREATE INDEX IF NOT EXISTS idx_short_code ON urls (short_code)''')
         c.execute('''CREATE INDEX IF NOT EXISTS idx_analytics_short_code ON analytics (short_code)''')
         c.execute('''CREATE INDEX IF NOT EXISTS idx_clicked_at ON analytics (clicked_at)''')
