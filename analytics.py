@@ -33,36 +33,44 @@ class Analytics:
                 'utm_campaign': 'no campaign'
             }
 
-    def track_click(self, short_code: str, request_data: Dict[str, Any]):
+    def track_click(self, short_code: str, click_data: Dict[str, Any]):
+        """Track a click on a shortened URL"""
         try:
-            # Get referrer or use direct if none
-            referrer = request_data.get('referrer', '')
+            conn = self.db.get_connection()
+            c = conn.cursor()
             
-            # Parse UTM parameters from the original URL
-            url_info = self.db.get_url_info(short_code)
-            if url_info:
-                utm_params = self.parse_utm_parameters(url_info['original_url'])
-            else:
-                utm_params = {
-                    'utm_source': 'direct',
-                    'utm_medium': 'none',
-                    'utm_campaign': 'no campaign'
-                }
-
-            # Combine with referrer data
-            analytics_data = {
-                'short_code': short_code,
-                'clicked_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'utm_source': utm_params['utm_source'],
-                'utm_medium': utm_params['utm_medium'],
-                'utm_campaign': utm_params['utm_campaign'],
-                'referrer': referrer
-            }
+            # Insert click data
+            c.execute('''
+                INSERT INTO analytics (
+                    short_code, 
+                    clicked_at, 
+                    utm_source, 
+                    utm_medium, 
+                    utm_campaign, 
+                    referrer
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                short_code,
+                click_data.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+                click_data.get('utm_source', 'direct'),
+                click_data.get('utm_medium', 'none'),
+                click_data.get('utm_campaign', 'none'),
+                click_data.get('referrer', '')
+            ))
             
-            self.db.save_analytics(analytics_data)
+            # Update total clicks in urls table
+            c.execute('''
+                UPDATE urls 
+                SET total_clicks = total_clicks + 1,
+                    last_clicked = ?
+                WHERE short_code = ?
+            ''', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), short_code))
             
+            conn.commit()
         except Exception as e:
             print(f"Error tracking click: {str(e)}")
+        finally:
+            conn.close()
 
     def get_analytics(self, short_code: str) -> Dict[str, Any]:
         try:
