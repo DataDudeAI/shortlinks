@@ -7,3 +7,12 @@ plotly
 user-agents
 ip2geotools
 pandas 
+streamlit
+validators
+python-dateutil
+urllib3
+typing
+plotly
+user-agents
+ip2geotools-python
+pandas
