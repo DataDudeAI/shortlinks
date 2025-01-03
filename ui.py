@@ -1,16 +1,11 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 from typing import Dict, Any
 from datetime import datetime
 
 class UI:
     def __init__(self, url_shortener):
         self.url_shortener = url_shortener
-        
-    def render_header(self):
-        st.set_page_config(page_title="URL Shortener", layout="wide")
-        st.title('URL Shortener')
 
     def render_url_form(self):
         with st.form("url_shortener_form"):
@@ -62,12 +57,8 @@ class UI:
                 analytics_data['utm_sources'].items(),
                 columns=['Source', 'Clicks']
             )
-            col1, col2 = st.columns(2)
-            with col1:
-                fig = px.pie(utm_df, values='Clicks', names='Source', title='Traffic by Source')
-                st.plotly_chart(fig)
-            with col2:
-                st.dataframe(utm_df, hide_index=True)
+            st.bar_chart(utm_df.set_index('Source'))
+            st.dataframe(utm_df, hide_index=True)
 
         # Campaign Medium breakdown
         if analytics_data.get('utm_mediums'):
@@ -76,20 +67,16 @@ class UI:
                 analytics_data['utm_mediums'].items(),
                 columns=['Medium', 'Clicks']
             )
-            col1, col2 = st.columns(2)
-            with col1:
-                fig = px.bar(utm_medium_df, x='Medium', y='Clicks', title='Traffic by Medium')
-                st.plotly_chart(fig)
-            with col2:
-                st.dataframe(utm_medium_df, hide_index=True)
+            st.bar_chart(utm_medium_df.set_index('Medium'))
+            st.dataframe(utm_medium_df, hide_index=True)
 
     def render_past_links(self, past_links: list):
-        st.subheader("Your Short Links")
-        
         if not past_links:
-            st.info("No links created yet")
+            st.info("No links created yet. Create your first short link in the 'Create Short URL' tab!")
             return
 
+        st.subheader("Your Short Links")
+        
         for link in past_links:
             with st.expander(f"📎 {link['short_code']} ({link['total_clicks']} clicks)"):
                 col1, col2 = st.columns([3, 1])
@@ -101,12 +88,15 @@ class UI:
                 with col2:
                     st.write("**Created:**", datetime.strptime(link['created_at'], 
                             '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d'))
-                    st.write("**Clicks:**", link['total_clicks'])
+                    st.metric("Clicks", link['total_clicks'])
                 
                 # Show analytics button
                 if st.button("View Analytics", key=f"analytics_{link['short_code']}"):
                     analytics_data = self.url_shortener.analytics.get_analytics(link['short_code'])
-                    self.render_analytics(analytics_data)
+                    if analytics_data:
+                        self.render_analytics(analytics_data)
+                    else:
+                        st.warning("No analytics data available yet")
 
     def render_documentation(self):
         st.header("How to Use")
