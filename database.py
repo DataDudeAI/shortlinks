@@ -10,7 +10,7 @@ class Database:
         self.init_db()
         
     def init_db(self):
-        """Initialize database with enhanced analytics tracking"""
+        """Initialize database with success tracking"""
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         
@@ -44,6 +44,7 @@ class Database:
                 device_type TEXT,
                 browser TEXT,
                 os TEXT,
+                successful BOOLEAN DEFAULT TRUE,
                 FOREIGN KEY (short_code) REFERENCES urls (short_code)
             )
         ''')
@@ -54,6 +55,9 @@ class Database:
         c.execute('''CREATE INDEX IF NOT EXISTS idx_clicked_at ON analytics (clicked_at)''')
         c.execute('''CREATE INDEX IF NOT EXISTS idx_country ON analytics (country)''')
         c.execute('''CREATE INDEX IF NOT EXISTS idx_device_type ON analytics (device_type)''')
+        
+        # Add index for successful field
+        c.execute('''CREATE INDEX IF NOT EXISTS idx_successful ON analytics (successful)''')
         
         conn.commit()
         conn.close()
