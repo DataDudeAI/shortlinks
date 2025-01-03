@@ -198,6 +198,7 @@ def main():
                     analytics_data = shortener.analytics.get_analytics(url['short_code'])
                     if analytics_data:
                         shortener.ui.render_analytics(analytics_data)
+                        shortener.ui.render_recent_clicks(url['short_code'])
                     else:
                         st.info("No analytics data available for this link yet.")
         else:
