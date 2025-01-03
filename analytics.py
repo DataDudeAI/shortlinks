@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from user_agents import parse
-from ip2geotools.databases.noncommercial import DbIpCity
+import requests
 import os
 
 # Setup logging
@@ -11,21 +11,23 @@ logger = logging.getLogger(__name__)
 class Analytics:
     def __init__(self, db):
         self.db = db
+        self.ip_api_url = "http://ip-api.com/json/"  # Free IP geolocation API
 
     def get_geo_data(self, ip_address: str) -> Dict[str, str]:
-        """Get geolocation data from IP address using free IP database"""
+        """Get geolocation data from IP address using free IP API"""
         try:
             if ip_address and ip_address not in ('127.0.0.1', 'localhost', ''):
-                response = DbIpCity.get(ip_address, api_key='free')
-                if response and response.country:
-                    return {
-                        'country': response.country,
-                        'city': response.city or 'Unknown'
-                    }
+                response = requests.get(f"{self.ip_api_url}{ip_address}")
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('status') == 'success':
+                        return {
+                            'country': data.get('country', 'Unknown'),
+                            'city': data.get('city', 'Unknown')
+                        }
         except Exception as e:
             logger.warning(f"Error getting geo data for IP {ip_address}: {str(e)}")
         
-        # Default response for any failure case
         return {
             'country': 'Unknown',
             'city': 'Unknown'
