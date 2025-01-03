@@ -1,109 +1,107 @@
-from typing import Dict, Any, List
-from urllib.parse import urlparse, parse_qs
+from typing import Dict, Any
 from datetime import datetime
+import pandas as pd
 
 class Analytics:
     def __init__(self, database):
         self.db = database
 
-    def parse_utm_parameters(self, url: str) -> Dict[str, str]:
-        try:
-            parsed_url = urlparse(url)
-            query_params = parse_qs(parsed_url.query)
-            
-            utm_params = {
-                'utm_source': query_params.get('utm_source', [None])[0],
-                'utm_medium': query_params.get('utm_medium', [None])[0],
-                'utm_campaign': query_params.get('utm_campaign', [None])[0]
-            }
-            
-            # Set default values if parameters are missing
-            if not utm_params['utm_source']:
-                utm_params['utm_source'] = 'direct'
-            if not utm_params['utm_medium']:
-                utm_params['utm_medium'] = 'none'
-            if not utm_params['utm_campaign']:
-                utm_params['utm_campaign'] = 'no campaign'
-                
-            return utm_params
-        except Exception:
-            return {
-                'utm_source': 'direct',
-                'utm_medium': 'none',
-                'utm_campaign': 'no campaign'
-            }
-
     def track_click(self, short_code: str, click_data: Dict[str, Any]):
         """Track a click on a shortened URL"""
         try:
-            conn = self.db.get_connection()
-            c = conn.cursor()
+            # Get the original URL info
+            url_info = self.db.get_url_info(short_code)
+            if not url_info:
+                return
             
-            # Insert click data
-            c.execute('''
-                INSERT INTO analytics (
-                    short_code, 
-                    clicked_at, 
-                    utm_source, 
-                    utm_medium, 
-                    utm_campaign, 
-                    referrer
-                ) VALUES (?, ?, ?, ?, ?, ?)
-            ''', (
-                short_code,
-                click_data.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
-                click_data.get('utm_source', 'direct'),
-                click_data.get('utm_medium', 'none'),
-                click_data.get('utm_campaign', 'none'),
-                click_data.get('referrer', '')
-            ))
+            # Parse UTM parameters from the original URL
+            utm_params = self.parse_utm_parameters(url_info['original_url'])
             
-            # Update total clicks in urls table
-            c.execute('''
-                UPDATE urls 
-                SET total_clicks = total_clicks + 1,
-                    last_clicked = ?
-                WHERE short_code = ?
-            ''', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), short_code))
+            # Save click data
+            analytics_data = {
+                'short_code': short_code,
+                'clicked_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'utm_source': utm_params.get('utm_source', 'direct'),
+                'utm_medium': utm_params.get('utm_medium', 'none'),
+                'utm_campaign': utm_params.get('utm_campaign', 'none'),
+                'referrer': click_data.get('referrer', '')
+            }
             
-            conn.commit()
+            self.db.save_analytics(analytics_data)
+            
         except Exception as e:
             print(f"Error tracking click: {str(e)}")
-        finally:
-            conn.close()
 
     def get_analytics(self, short_code: str) -> Dict[str, Any]:
+        """Get analytics data for a specific short code"""
         try:
-            analytics_data = self.db.get_analytics_data(short_code)
-            if not analytics_data:
+            # Get basic URL info
+            url_info = self.db.get_url_info(short_code)
+            if not url_info:
                 return None
-
-            # Ensure we have default values for all fields
-            analytics_data.setdefault('utm_sources', {'direct': 0})
-            analytics_data.setdefault('utm_mediums', {'none': 0})
-            analytics_data.setdefault('campaigns', {'no campaign': 0})
-            analytics_data.setdefault('clicks_over_time', {})
-
-            return analytics_data
+            
+            # Get click data
+            clicks = self.db.get_clicks(short_code)
+            
+            # Calculate statistics
+            total_clicks = len(clicks)
+            last_clicked = clicks[-1]['clicked_at'] if clicks else 'Never'
+            
+            # Count unique sources
+            sources = {}
+            mediums = {}
+            campaigns = {}
+            
+            for click in clicks:
+                # Count sources
+                source = click.get('utm_source', 'direct')
+                sources[source] = sources.get(source, 0) + 1
+                
+                # Count mediums
+                medium = click.get('utm_medium', 'none')
+                mediums[medium] = mediums.get(medium, 0) + 1
+                
+                # Count campaigns
+                campaign = click.get('utm_campaign', 'none')
+                campaigns[campaign] = campaigns.get(campaign, 0) + 1
+            
+            return {
+                'original_url': url_info['original_url'],
+                'short_code': short_code,
+                'created_at': url_info['created_at'],
+                'total_clicks': total_clicks,
+                'last_clicked': last_clicked,
+                'utm_sources': sources,
+                'utm_mediums': mediums,
+                'utm_campaigns': campaigns,
+                'recent_clicks': clicks[-10:] if clicks else []  # Last 10 clicks
+            }
             
         except Exception as e:
             print(f"Error getting analytics: {str(e)}")
             return None
 
     def get_redirect_url(self, short_code: str) -> str:
-        """Get the redirect URL and handle it properly"""
+        """Get the redirect URL"""
         url_info = self.db.get_url_info(short_code)
         if url_info:
-            original_url = url_info['original_url']
-            # Ensure URL has proper protocol
-            if not original_url.startswith(('http://', 'https://')):
-                original_url = 'https://' + original_url
-            return original_url
+            return url_info['original_url']
         return None
 
-    def get_past_links(self) -> List[Dict[str, Any]]:
+    def parse_utm_parameters(self, url: str) -> Dict[str, str]:
+        """Parse UTM parameters from URL"""
         try:
-            return self.db.get_all_urls()
-        except Exception as e:
-            print(f"Error getting past links: {str(e)}")
-            return [] 
+            parsed_url = urlparse(url)
+            query_params = parse_qs(parsed_url.query)
+            
+            return {
+                'utm_source': query_params.get('utm_source', ['direct'])[0],
+                'utm_medium': query_params.get('utm_medium', ['none'])[0],
+                'utm_campaign': query_params.get('utm_campaign', ['none'])[0]
+            }
+        except:
+            return {
+                'utm_source': 'direct',
+                'utm_medium': 'none',
+                'utm_campaign': 'none'
+            } 
