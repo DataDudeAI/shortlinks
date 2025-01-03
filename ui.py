@@ -1,9 +1,13 @@
 import streamlit as st
 import pandas as pd
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta
 import io
 import plotly.express as px
+import qrcode
+from PIL import Image
+import json
+import uuid
 
 BASE_URL = "https://shortlinksnandan.streamlit.app"
 
@@ -15,24 +19,218 @@ class UI:
         with st.form("url_shortener_form"):
             url_input = st.text_input('Enter URL to shorten')
             
+            # Advanced Options
+            with st.expander("Advanced Options"):
+                # Custom short code
+                custom_code = st.text_input('Custom short code (optional)', '')
+                
+                # Link expiration
+                col1, col2 = st.columns(2)
+                with col1:
+                    enable_expiry = st.checkbox('Enable link expiration')
+                with col2:
+                    if enable_expiry:
+                        expiry_days = st.number_input('Expire after days', min_value=1, value=30)
+                
+                # A/B Testing
+                enable_ab = st.checkbox('Enable A/B Testing')
+                if enable_ab:
+                    variant_b_url = st.text_input('Variant B URL')
+                    split_ratio = st.slider('Traffic Split (A/B)', 0, 100, 50)
+                
+                # Link grouping/tagging
+                tags = st.multiselect('Add tags', 
+                    ['Personal', 'Business', 'Marketing', 'Social', 'Other'],
+                    default=None)
+                
+                # QR Code customization
+                enable_qr = st.checkbox('Generate QR Code')
+                if enable_qr:
+                    qr_color = st.color_picker('QR Code Color', '#000000')
+                    qr_bg_color = st.color_picker('Background Color', '#FFFFFF')
+            
             # UTM Parameters
-            with st.expander("Add Campaign Parameters (Optional)"):
+            with st.expander("Campaign Parameters (UTM)"):
                 utm_source = st.text_input('Campaign Source (e.g., facebook, twitter)', '')
                 utm_medium = st.text_input('Campaign Medium (e.g., social, email)', '')
                 utm_campaign = st.text_input('Campaign Name', '')
+                utm_term = st.text_input('Campaign Term (for paid search)', '')
+                utm_content = st.text_input('Campaign Content (for A/B testing)', '')
             
             submitted = st.form_submit_button("Create Short URL")
             
             if submitted:
+                expiry_date = None
+                if enable_expiry:
+                    expiry_date = (datetime.now() + timedelta(days=expiry_days)).strftime('%Y-%m-%d %H:%M:%S')
+                
                 return {
                     'url': url_input,
+                    'custom_code': custom_code if custom_code else None,
+                    'expiry_date': expiry_date,
+                    'ab_testing': {
+                        'enabled': enable_ab,
+                        'variant_b_url': variant_b_url if enable_ab else None,
+                        'split_ratio': split_ratio if enable_ab else None
+                    },
+                    'tags': tags,
+                    'qr_code': {
+                        'enabled': enable_qr,
+                        'color': qr_color if enable_qr else '#000000',
+                        'bg_color': qr_bg_color if enable_qr else '#FFFFFF'
+                    },
                     'utm_params': {
                         'utm_source': utm_source,
                         'utm_medium': utm_medium,
-                        'utm_campaign': utm_campaign
+                        'utm_campaign': utm_campaign,
+                        'utm_term': utm_term,
+                        'utm_content': utm_content
                     }
                 }
         return None
+
+    def generate_qr_code(self, url: str, color: str = '#000000', bg_color: str = '#FFFFFF') -> Image:
+        """Generate a customized QR code"""
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(url)
+        qr.make(fit=True)
+
+        # Convert hex colors to RGB
+        fill_color = tuple(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+        back_color = tuple(int(bg_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+        
+        return qr.make_image(fill_color=fill_color, back_color=back_color)
+
+    def render_analytics_dashboard(self, analytics_data: Dict[str, Any]):
+        """Enhanced analytics dashboard with A/B testing results"""
+        st.subheader("📊 Enhanced Analytics")
+        
+        # Main metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Clicks", analytics_data['total_clicks'])
+        with col2:
+            st.metric("Unique Visitors", analytics_data.get('unique_visitors', 0))
+        with col3:
+            conversion_rate = analytics_data.get('conversion_rate', 0)
+            st.metric("Conversion Rate", f"{conversion_rate:.1f}%")
+        with col4:
+            bounce_rate = analytics_data.get('bounce_rate', 0)
+            st.metric("Bounce Rate", f"{bounce_rate:.1f}%")
+
+        # A/B Testing Results
+        if analytics_data.get('ab_testing', {}).get('enabled'):
+            st.subheader("🔄 A/B Testing Results")
+            ab_data = analytics_data['ab_testing']
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Variant A Conversions", 
+                         f"{ab_data['variant_a_conversion']:.1f}%")
+            with col2:
+                st.metric("Variant B Conversions", 
+                         f"{ab_data['variant_b_conversion']:.1f}%")
+            
+            # Statistical significance
+            if ab_data.get('significant'):
+                st.success(f"Winner: Variant {'A' if ab_data['winner'] == 'a' else 'B'}")
+            else:
+                st.info("Not enough data for statistical significance")
+
+        # Time series analysis
+        st.subheader("📈 Traffic Over Time")
+        if analytics_data.get('daily_clicks'):
+            df = pd.DataFrame(analytics_data['daily_clicks'])
+            fig = px.line(df, x='date', y='clicks', title='Daily Clicks')
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Device & Browser Analytics
+        col1, col2 = st.columns(2)
+        with col1:
+            self.render_pie_chart(analytics_data.get('devices', {}), "Device Types")
+        with col2:
+            self.render_pie_chart(analytics_data.get('browsers', {}), "Browsers")
+
+        # Geographic Data
+        if analytics_data.get('geo_data'):
+            st.subheader("🌍 Geographic Distribution")
+            df = pd.DataFrame(analytics_data['geo_data'])
+            fig = px.choropleth(df, 
+                              locations='country_code',
+                              color='clicks',
+                              hover_name='country',
+                              title='Global Click Distribution')
+            st.plotly_chart(fig, use_container_width=True)
+
+    def render_link_management(self, links: List[Dict[str, Any]]):
+        """Enhanced link management interface"""
+        st.subheader("🔗 Link Management")
+        
+        # Filter and sort options
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            sort_by = st.selectbox('Sort by', 
+                ['Created Date', 'Clicks', 'Conversion Rate'])
+        with col2:
+            filter_tag = st.multiselect('Filter by tags', 
+                ['Personal', 'Business', 'Marketing', 'Social', 'Other'])
+        with col3:
+            search = st.text_input('Search links', '')
+
+        # Apply filters
+        filtered_links = [
+            link for link in links
+            if (not filter_tag or any(tag in link.get('tags', []) for tag in filter_tag))
+            and (not search or search.lower() in link['original_url'].lower())
+        ]
+
+        # Sort links
+        if sort_by == 'Clicks':
+            filtered_links.sort(key=lambda x: x['total_clicks'], reverse=True)
+        elif sort_by == 'Conversion Rate':
+            filtered_links.sort(key=lambda x: x.get('conversion_rate', 0), reverse=True)
+        else:  # Created Date
+            filtered_links.sort(key=lambda x: x['created_at'], reverse=True)
+
+        # Display links
+        for link in filtered_links:
+            self.render_link_card(link)
+
+    def render_link_card(self, link: Dict[str, Any]):
+        """Render an individual link card"""
+        with st.expander(f"🔗 {link['short_code']} ({link['total_clicks']} clicks)"):
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                st.markdown(f"**Original URL:** {link['original_url']}")
+                shortened_url = f"{BASE_URL}/?r={link['short_code']}"
+                st.code(shortened_url)
+                
+                # Tags
+                if link.get('tags'):
+                    st.markdown("**Tags:** " + ", ".join(link['tags']))
+                
+                # Expiration
+                if link.get('expiry_date'):
+                    expiry = datetime.strptime(link['expiry_date'], '%Y-%m-%d %H:%M:%S')
+                    if expiry > datetime.now():
+                        days_left = (expiry - datetime.now()).days
+                        st.info(f"Expires in {days_left} days")
+                    else:
+                        st.error("Link expired")
+            
+            with col2:
+                if st.button("📋 Copy", key=f"copy_{link['short_code']}"):
+                    st.toast("Copied to clipboard!")
+                if st.button("🔄 Reset Stats", key=f"reset_{link['short_code']}"):
+                    if st.confirm("Are you sure? This will reset all analytics data."):
+                        self.url_shortener.reset_analytics(link['short_code'])
+                        st.success("Analytics reset successfully!")
 
     def render_analytics(self, analytics_data: Dict[str, Any]):
         """Enhanced analytics visualization with real-time data"""
