@@ -8,3 +8,4 @@ user-agents
 ip2geotools
 pandas
 requests
+qrcode
