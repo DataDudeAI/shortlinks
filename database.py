@@ -270,3 +270,43 @@ class Database:
             
         finally:
             conn.close() 
+
+    def get_recent_clicks(self, short_code: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent clicks for a specific short code"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('''
+                SELECT 
+                    clicked_at,
+                    country,
+                    device_type,
+                    browser,
+                    os,
+                    utm_source,
+                    utm_medium,
+                    utm_campaign,
+                    referrer
+                FROM analytics
+                WHERE short_code = ?
+                ORDER BY clicked_at DESC
+                LIMIT ?
+            ''', (short_code, limit))
+            
+            clicks = []
+            for row in c.fetchall():
+                clicks.append({
+                    'clicked_at': row[0],
+                    'country': row[1],
+                    'device_type': row[2],
+                    'browser': row[3],
+                    'os': row[4],
+                    'utm_source': row[5],
+                    'utm_medium': row[6],
+                    'utm_campaign': row[7],
+                    'referrer': row[8]
+                })
+            
+            return clicks
+        finally:
+            conn.close() 
