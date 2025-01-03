@@ -35,7 +35,7 @@ class UI:
         return None
 
     def render_analytics(self, analytics_data: Dict[str, Any]):
-        """Enhanced analytics visualization"""
+        """Enhanced analytics visualization with real-time data"""
         st.subheader("📊 Link Analytics")
         
         # Summary metrics in columns
@@ -45,68 +45,57 @@ class UI:
         with col2:
             st.metric("Unique Visitors", analytics_data.get('unique_visitors', 0))
         with col3:
-            conversion_rate = (analytics_data.get('conversions', 0) / analytics_data['total_clicks'] * 100) if analytics_data['total_clicks'] > 0 else 0
-            st.metric("Conversion Rate", f"{conversion_rate:.1f}%")
+            success_rate = (analytics_data.get('successful_redirects', 0) / analytics_data['total_clicks'] * 100) if analytics_data['total_clicks'] > 0 else 0
+            st.metric("Success Rate", f"{success_rate:.1f}%")
         with col4:
-            bounce_rate = (analytics_data.get('bounces', 0) / analytics_data['total_clicks'] * 100) if analytics_data['total_clicks'] > 0 else 0
+            bounce_rate = (analytics_data.get('bounces', 0) / analytics_data['unique_visitors'] * 100) if analytics_data.get('unique_visitors', 0) > 0 else 0
             st.metric("Bounce Rate", f"{bounce_rate:.1f}%")
 
-        # Geographic Data
-        if analytics_data.get('countries'):
-            st.subheader("🌎 Geographic Distribution")
-            geo_df = pd.DataFrame(
-                analytics_data['countries'].items(),
-                columns=['Country', 'Clicks']
-            ).sort_values('Clicks', ascending=False)
-            
-            # Create a choropleth map
-            fig = px.choropleth(
-                geo_df,
-                locations='Country',
-                locationmode='country-names',
-                color='Clicks',
-                hover_name='Country',
-                color_continuous_scale='Viridis'
-            )
-            st.plotly_chart(fig)
+        # Recent Clicks Table
+        st.subheader("🕒 Recent Clicks")
+        if analytics_data.get('recent_clicks'):
+            recent_clicks = analytics_data['recent_clicks']
+            for click in recent_clicks:
+                with st.container():
+                    col1, col2, col3 = st.columns([2,2,1])
+                    with col1:
+                        time_ago = (datetime.now() - datetime.strptime(click['clicked_at'], '%Y-%m-%d %H:%M:%S'))
+                        if time_ago.total_seconds() < 60:
+                            time_str = f"{int(time_ago.total_seconds())} seconds ago"
+                        elif time_ago.total_seconds() < 3600:
+                            time_str = f"{int(time_ago.total_seconds()/60)} minutes ago"
+                        else:
+                            time_str = f"{int(time_ago.total_seconds()/3600)} hours ago"
+                        
+                        st.text(f"🕒 {time_str}")
+                        st.text(f"🌍 {click['country']}")
+                    with col2:
+                        st.text(f"📱 {click['device_type']}")
+                        st.text(f"🌐 {click['browser']} ({click['os']})")
+                    with col3:
+                        status = "✅" if click['successful'] else "❌"
+                        st.text(f"{status} {click['utm_source']}")
+                    st.divider()
+        else:
+            st.info("No clicks recorded yet")
 
-        # Time Series Data
-        if analytics_data.get('clicks_over_time'):
-            st.subheader("📈 Click Trends")
-            time_df = pd.DataFrame(
-                analytics_data['clicks_over_time'].items(),
-                columns=['Date', 'Clicks']
-            )
-            time_df['Date'] = pd.to_datetime(time_df['Date'])
+        # Link Details
+        st.subheader("🔗 Link Details")
+        cols = st.columns([3, 2])
+        with cols[0]:
+            st.markdown("**Original URL:**")
+            st.write(analytics_data['original_url'])
             
-            fig = px.line(
-                time_df,
-                x='Date',
-                y='Clicks',
-                title='Clicks Over Time'
-            )
-            st.plotly_chart(fig)
-
-        # Device Analytics
-        if analytics_data.get('devices'):
-            st.subheader("📱 Device Analytics")
-            col1, col2 = st.columns(2)
+            shortened_url = f"{BASE_URL}/?r={analytics_data['short_code']}"
+            st.markdown("**Short URL:**")
+            st.code(shortened_url)
             
+            col1, col2 = st.columns([1, 2])
             with col1:
-                device_df = pd.DataFrame(
-                    analytics_data['devices'].items(),
-                    columns=['Device', 'Count']
-                )
-                fig = px.pie(device_df, values='Count', names='Device', title='Device Distribution')
-                st.plotly_chart(fig)
-            
+                if st.button("📋 Copy", key=f"copy_{analytics_data['short_code']}"):
+                    st.write("Copied to clipboard!")
             with col2:
-                browser_df = pd.DataFrame(
-                    analytics_data['browsers'].items(),
-                    columns=['Browser', 'Count']
-                )
-                fig = px.pie(browser_df, values='Count', names='Browser', title='Browser Distribution')
-                st.plotly_chart(fig)
+                st.markdown(f"[🔗 Test Link]({shortened_url})")
 
     def generate_analytics_csv(self, analytics_data: Dict[str, Any]) -> str:
         """Generate CSV data for analytics export"""
