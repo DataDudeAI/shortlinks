@@ -7,6 +7,8 @@ import string
 import random
 from urllib.parse import urlparse, parse_qs, urlencode
 from typing import Optional
+import pandas as pd
+from datetime import datetime
 
 # Must be the first Streamlit command
 st.set_page_config(page_title="URL Shortener", layout="wide")
@@ -100,50 +102,48 @@ def main():
     if path:
         redirect_url = shortener.analytics.get_redirect_url(path)
         if redirect_url:
-            # Track the click
+            # Track the click before redirecting
             shortener.analytics.track_click(path, {
-                'referrer': st.query_params.get('ref', '')
+                'referrer': st.query_params.get('ref', ''),
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             })
             
             # Ensure the URL is properly formatted
             redirect_url = shortener.clean_url(redirect_url)
             
-            # Simple meta refresh
+            # Create a frame-breaking redirect
             st.markdown(
                 f"""
-                <meta http-equiv="refresh" content="0; url='{redirect_url}'">
+                <html>
+                <head>
+                <title>Redirecting...</title>
+                </head>
+                <body>
+                <a href="{redirect_url}" id="redirectLink" target="_parent">Click here if not automatically redirected</a>
+                <script>
+                    // Break out of frames
+                    if (window !== window.top) {{
+                        window.top.location.href = "{redirect_url}";
+                    }} else {{
+                        window.location.href = "{redirect_url}";
+                    }}
+                    // Fallback
+                    document.getElementById('redirectLink').click();
+                </script>
+                </body>
+                </html>
                 """,
                 unsafe_allow_html=True
             )
-            
-            # Show loading message
-            st.info(f"Opening {redirect_url}")
-            
-            # Direct link as backup
-            st.markdown(
-                f"""
-                <a href="{redirect_url}" target="_blank" 
-                style="display: inline-block; padding: 10px 20px; 
-                background-color: #1E88E5; color: white; 
-                text-decoration: none; border-radius: 5px; 
-                margin-top: 20px;">
-                Click here to open directly ↗
-                </a>
-                """,
-                unsafe_allow_html=True
-            )
-            
-            st.stop()
             return
         else:
             st.error("Invalid or expired short URL")
-            st.stop()
             return
 
     st.title('URL Shortener')
     
     # Create tabs
-    tab1, tab2 = st.tabs(["Create Short URL", "Your Links"])
+    tab1, tab2 = st.tabs(["Create Short URL", "Analytics"])
 
     with tab1:
         form_data = shortener.ui.render_url_form()
@@ -185,20 +185,54 @@ def main():
                 # Add direct link
                 st.markdown(
                     f"""
-                    <a href="{shortened_url}" target="_blank" 
+                    <a href="{shortened_url}" target="_blank" rel="noopener noreferrer"
                     style="display: inline-block; padding: 10px 20px; 
                     background-color: #1E88E5; color: white; 
                     text-decoration: none; border-radius: 5px; 
                     margin-top: 20px;">
-                    Test this link ↗
+                    Open Link ↗
                     </a>
                     """,
                     unsafe_allow_html=True
                 )
 
     with tab2:
-        past_links = shortener.db.get_all_urls()
-        shortener.ui.render_past_links(past_links)
+        # Display analytics for all URLs
+        urls = shortener.db.get_all_urls()
+        if urls:
+            for url in urls:
+                with st.expander(f"📊 {url['short_code']} - {url['total_clicks']} clicks"):
+                    analytics_data = shortener.analytics.get_analytics(url['short_code'])
+                    if analytics_data:
+                        # Display analytics
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Total Clicks", analytics_data['total_clicks'])
+                        with col2:
+                            st.metric("Unique Sources", analytics_data.get('unique_sources', 0))
+                        with col3:
+                            st.metric("Last Click", analytics_data.get('last_clicked', 'Never'))
+                        
+                        # Show original URL
+                        st.write("**Original URL:**")
+                        st.write(analytics_data['original_url'])
+                        
+                        # Show traffic sources if available
+                        if analytics_data.get('utm_sources'):
+                            st.write("**Traffic Sources:**")
+                            source_df = pd.DataFrame(
+                                analytics_data['utm_sources'].items(),
+                                columns=['Source', 'Clicks']
+                            )
+                            st.dataframe(source_df)
+                        
+                        # Show recent clicks
+                        if analytics_data.get('recent_clicks'):
+                            st.write("**Recent Clicks:**")
+                            clicks_df = pd.DataFrame(analytics_data['recent_clicks'])
+                            st.dataframe(clicks_df)
+        else:
+            st.info("No links created yet. Create your first short link in the 'Create Short URL' tab!")
 
 if __name__ == "__main__":
     main() 
