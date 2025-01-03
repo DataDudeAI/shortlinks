@@ -1,5 +1,10 @@
-streamlit>=1.29.0
-pandas>=2.1.0
-validators>=0.22.0
-python-dateutil>=2.8.2
-user-agents>=2.2.0 
+streamlit
+sqlite3
+validators
+python-dateutil
+urllib3
+typing
+plotly
+user-agents
+geoip2
+pandas 
