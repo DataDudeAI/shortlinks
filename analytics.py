@@ -1,20 +1,42 @@
-from typing import Dict, Any
+import logging
 from datetime import datetime
-import pandas as pd
+from typing import Dict, Any, Optional, List
 from user_agents import parse
+from ip2geotools.databases.noncommercial import DbIpCity
+import os
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 class Analytics:
-    def __init__(self, database):
-        self.db = database
+    def __init__(self, db):
+        self.db = db
 
-    def track_click(self, short_code: str, request_data: Dict[str, Any]):
-        """Enhanced click tracking with detailed analytics"""
+    def get_geo_data(self, ip_address: str) -> Dict[str, str]:
+        """Get geolocation data from IP address using free IP database"""
+        try:
+            if ip_address and ip_address != '127.0.0.1':  # Skip localhost
+                response = DbIpCity.get(ip_address, api_key='free')
+                return {
+                    'country': response.country or 'Unknown',
+                    'city': response.city or 'Unknown',
+                }
+        except Exception as e:
+            logger.warning(f"Error getting geo data: {str(e)}")
+        
+        return {
+            'country': 'Unknown',
+            'city': 'Unknown'
+        }
+
+    def track_click(self, short_code: str, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Enhanced click tracking with detailed analytics and instant return"""
         try:
             # Extract user agent info
             user_agent = request_data.get('User-Agent', '')
-            user_agent_parser = parse(user_agent)
+            ua_parser = parse(user_agent)
             
-            # Get geolocation data from IP
+            # Get geolocation data
             ip_address = request_data.get('ip', '')
             geo_data = self.get_geo_data(ip_address)
             
@@ -29,90 +51,36 @@ class Analytics:
                 'user_agent': user_agent,
                 'ip_address': ip_address,
                 'country': geo_data.get('country', 'Unknown'),
-                'device_type': user_agent_parser.device.family,
-                'browser': user_agent_parser.browser.family,
-                'os': user_agent_parser.os.family
+                'device_type': ua_parser.device.family,
+                'browser': ua_parser.browser.family,
+                'os': ua_parser.os.family
             }
             
             # Save to database
             self.db.save_analytics(analytics_data)
             
-            # Update cache for real-time analytics
-            self.update_realtime_cache(short_code, analytics_data)
+            return analytics_data
             
         except Exception as e:
             logger.error(f"Error tracking click: {str(e)}")
+            return {}
+
+    def get_recent_clicks(self, short_code: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get most recent clicks for a URL"""
+        return self.db.get_recent_clicks(short_code, limit)
 
     def get_analytics(self, short_code: str) -> Dict[str, Any]:
         """Get analytics data for a specific short code"""
-        try:
-            # Get basic URL info
-            url_info = self.db.get_url_info(short_code)
-            if not url_info:
-                return None
-            
-            # Get click data
-            clicks = self.db.get_clicks(short_code)
-            
-            # Calculate statistics
-            total_clicks = len(clicks)
-            last_clicked = clicks[-1]['clicked_at'] if clicks else 'Never'
-            
-            # Count unique sources
-            sources = {}
-            mediums = {}
-            campaigns = {}
-            
-            for click in clicks:
-                # Count sources
-                source = click.get('utm_source', 'direct')
-                sources[source] = sources.get(source, 0) + 1
-                
-                # Count mediums
-                medium = click.get('utm_medium', 'none')
-                mediums[medium] = mediums.get(medium, 0) + 1
-                
-                # Count campaigns
-                campaign = click.get('utm_campaign', 'none')
-                campaigns[campaign] = campaigns.get(campaign, 0) + 1
-            
-            return {
-                'original_url': url_info['original_url'],
-                'short_code': short_code,
-                'created_at': url_info['created_at'],
-                'total_clicks': total_clicks,
-                'last_clicked': last_clicked,
-                'utm_sources': sources,
-                'utm_mediums': mediums,
-                'utm_campaigns': campaigns,
-                'recent_clicks': clicks[-10:] if clicks else []  # Last 10 clicks
-            }
-            
-        except Exception as e:
-            print(f"Error getting analytics: {str(e)}")
-            return None
+        return self.db.get_analytics_data(short_code)
 
-    def get_redirect_url(self, short_code: str) -> str:
-        """Get the redirect URL"""
+    def get_redirect_url(self, short_code: str) -> Optional[str]:
+        """Get the original URL for redirection"""
         url_info = self.db.get_url_info(short_code)
         if url_info:
             return url_info['original_url']
         return None
 
-    def parse_utm_parameters(self, url: str) -> Dict[str, str]:
-        """Parse UTM parameters from URL"""
-        try:
-            parsed_url = urlparse(url)
-            query_params = parse_qs(parsed_url.query)
-            
-            return {
-                'utm_source': query_params.get('utm_source', ['direct'])[0],
-                'utm_medium': query_params.get('utm_medium', ['none'])[0],
-                'utm_campaign': query_params.get('utm_campaign', ['none'])[0]
-            }
-        except:
-            return {
-                'utm_source': 'direct',
-                'utm_medium': 'none',
-                'utm_campaign': 'none'
-            } 
+    def __del__(self):
+        """Clean up GeoIP reader on object destruction"""
+        if self.geo_reader:
+            self.geo_reader.close() 
