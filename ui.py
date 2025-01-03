@@ -3,6 +3,7 @@ import pandas as pd
 from typing import Dict, Any, List
 from datetime import datetime
 import io
+import plotly.express as px
 
 BASE_URL = "https://shortlinksnandan.streamlit.app"
 
@@ -34,79 +35,78 @@ class UI:
         return None
 
     def render_analytics(self, analytics_data: Dict[str, Any]):
-        """Render analytics data for a URL"""
+        """Enhanced analytics visualization"""
         st.subheader("📊 Link Analytics")
         
-        # Basic Stats
-        col1, col2, col3 = st.columns(3)
+        # Summary metrics in columns
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Clicks", analytics_data['total_clicks'])
         with col2:
-            st.metric("Last Click", analytics_data.get('last_clicked', 'Never'))
+            st.metric("Unique Visitors", analytics_data.get('unique_visitors', 0))
         with col3:
-            created_date = datetime.strptime(analytics_data['created_at'], '%Y-%m-%d %H:%M:%S')
-            days_active = (datetime.now() - created_date).days
-            if days_active > 0:
-                clicks_per_day = analytics_data['total_clicks'] / days_active
-                st.metric("Avg. Clicks/Day", f"{clicks_per_day:.1f}")
-            else:
-                st.metric("Avg. Clicks/Day", "0")
+            conversion_rate = (analytics_data.get('conversions', 0) / analytics_data['total_clicks'] * 100) if analytics_data['total_clicks'] > 0 else 0
+            st.metric("Conversion Rate", f"{conversion_rate:.1f}%")
+        with col4:
+            bounce_rate = (analytics_data.get('bounces', 0) / analytics_data['total_clicks'] * 100) if analytics_data['total_clicks'] > 0 else 0
+            st.metric("Bounce Rate", f"{bounce_rate:.1f}%")
 
-        # Traffic Sources
-        if analytics_data.get('utm_sources'):
-            st.subheader("🔍 Traffic Sources")
-            source_df = pd.DataFrame(
-                analytics_data['utm_sources'].items(),
-                columns=['Source', 'Clicks']
+        # Geographic Data
+        if analytics_data.get('countries'):
+            st.subheader("🌎 Geographic Distribution")
+            geo_df = pd.DataFrame(
+                analytics_data['countries'].items(),
+                columns=['Country', 'Clicks']
             ).sort_values('Clicks', ascending=False)
             
-            # Calculate percentages
-            total = source_df['Clicks'].sum()
-            source_df['Percentage'] = (source_df['Clicks'] / total * 100).round(1)
-            source_df['Percentage'] = source_df['Percentage'].astype(str) + '%'
-            
-            st.dataframe(source_df, hide_index=True)
-
-        # Traffic Mediums
-        if analytics_data.get('utm_mediums'):
-            st.subheader("📱 Traffic Mediums")
-            medium_df = pd.DataFrame(
-                analytics_data['utm_mediums'].items(),
-                columns=['Medium', 'Clicks']
-            ).sort_values('Clicks', ascending=False)
-            
-            total = medium_df['Clicks'].sum()
-            medium_df['Percentage'] = (medium_df['Clicks'] / total * 100).round(1)
-            medium_df['Percentage'] = medium_df['Percentage'].astype(str) + '%'
-            
-            st.dataframe(medium_df, hide_index=True)
-
-        # Recent Clicks
-        if analytics_data.get('recent_clicks'):
-            st.subheader("🕒 Recent Activity")
-            clicks_df = pd.DataFrame(analytics_data['recent_clicks'])
-            if not clicks_df.empty:
-                clicks_df['clicked_at'] = pd.to_datetime(clicks_df['clicked_at'])
-                clicks_df = clicks_df.sort_values('clicked_at', ascending=False)
-                
-                for _, click in clicks_df.iterrows():
-                    with st.expander(f"Click at {click['clicked_at'].strftime('%Y-%m-%d %H:%M:%S')}"):
-                        st.write(f"Source: {click['utm_source']}")
-                        st.write(f"Medium: {click['utm_medium']}")
-                        st.write(f"Campaign: {click['utm_campaign']}")
-                        if click['referrer']:
-                            st.write(f"Referrer: {click['referrer']}")
-
-        # Export Data
-        st.subheader("📥 Export Data")
-        if st.button("Download Analytics"):
-            csv = self.generate_analytics_csv(analytics_data)
-            st.download_button(
-                label="Download CSV",
-                data=csv,
-                file_name=f"analytics_{analytics_data['short_code']}.csv",
-                mime="text/csv"
+            # Create a choropleth map
+            fig = px.choropleth(
+                geo_df,
+                locations='Country',
+                locationmode='country-names',
+                color='Clicks',
+                hover_name='Country',
+                color_continuous_scale='Viridis'
             )
+            st.plotly_chart(fig)
+
+        # Time Series Data
+        if analytics_data.get('clicks_over_time'):
+            st.subheader("📈 Click Trends")
+            time_df = pd.DataFrame(
+                analytics_data['clicks_over_time'].items(),
+                columns=['Date', 'Clicks']
+            )
+            time_df['Date'] = pd.to_datetime(time_df['Date'])
+            
+            fig = px.line(
+                time_df,
+                x='Date',
+                y='Clicks',
+                title='Clicks Over Time'
+            )
+            st.plotly_chart(fig)
+
+        # Device Analytics
+        if analytics_data.get('devices'):
+            st.subheader("📱 Device Analytics")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                device_df = pd.DataFrame(
+                    analytics_data['devices'].items(),
+                    columns=['Device', 'Count']
+                )
+                fig = px.pie(device_df, values='Count', names='Device', title='Device Distribution')
+                st.plotly_chart(fig)
+            
+            with col2:
+                browser_df = pd.DataFrame(
+                    analytics_data['browsers'].items(),
+                    columns=['Browser', 'Count']
+                )
+                fig = px.pie(browser_df, values='Count', names='Browser', title='Browser Distribution')
+                st.plotly_chart(fig)
 
     def generate_analytics_csv(self, analytics_data: Dict[str, Any]) -> str:
         """Generate CSV data for analytics export"""
