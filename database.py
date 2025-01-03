@@ -1,23 +1,22 @@
 import sqlite3
 from datetime import datetime
 from typing import Optional, Dict, Any
+import os
 
 class Database:
     def __init__(self, db_path: str = 'urls.db'):
-        self.db_path = db_path
-        self.reset_db()
+        # Ensure we're using an absolute path for Streamlit Cloud
+        self.db_path = os.path.abspath(db_path)
+        self.init_db()
         
-    def reset_db(self):
+    def init_db(self):
+        """Initialize database if it doesn't exist"""
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         
-        # Drop existing tables if they exist
-        c.execute('DROP TABLE IF EXISTS analytics')
-        c.execute('DROP TABLE IF EXISTS urls')
-        
-        # Create fresh tables with proper schema
+        # Create tables if they don't exist
         c.execute('''
-            CREATE TABLE urls (
+            CREATE TABLE IF NOT EXISTS urls (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 original_url TEXT NOT NULL,
                 short_code TEXT NOT NULL UNIQUE,
@@ -27,7 +26,7 @@ class Database:
         ''')
         
         c.execute('''
-            CREATE TABLE analytics (
+            CREATE TABLE IF NOT EXISTS analytics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 short_code TEXT NOT NULL,
                 clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -38,9 +37,9 @@ class Database:
             )
         ''')
         
-        # Create indexes for better performance
-        c.execute('CREATE INDEX idx_short_code ON urls (short_code)')
-        c.execute('CREATE INDEX idx_analytics_short_code ON analytics (short_code)')
+        # Create indexes if they don't exist
+        c.execute('''CREATE INDEX IF NOT EXISTS idx_short_code ON urls (short_code)''')
+        c.execute('''CREATE INDEX IF NOT EXISTS idx_analytics_short_code ON analytics (short_code)''')
         
         conn.commit()
         conn.close()
@@ -58,6 +57,9 @@ class Database:
             ''', (data['original_url'], data['short_code']))
             conn.commit()
             return data['short_code']
+        except sqlite3.IntegrityError:
+            # If short_code already exists, generate a new one
+            return None
         finally:
             conn.close()
 
