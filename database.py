@@ -77,18 +77,30 @@ class Database:
 
     # === URL Management Methods ===
 
-    def save_url(self, data: Dict[str, Any]) -> str:
+    def save_url(self, data: Dict[str, Any]) -> Optional[str]:
         """Save a new URL"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
+            # Validate required data
+            if not data.get('url') or not data.get('short_code'):
+                logger.error("Missing required URL data")
+                return None
+
+            # Insert the URL
             c.execute('''
                 INSERT INTO urls (original_url, short_code, total_clicks)
                 VALUES (?, ?, 0)
-            ''', (data['original_url'], data['short_code']))
+            ''', (data['url'], data['short_code']))
+            
             conn.commit()
+            logger.info(f"Successfully created short URL: {data['short_code']}")
             return data['short_code']
-        except sqlite3.IntegrityError:
+        except sqlite3.IntegrityError as e:
+            logger.error(f"URL creation failed - duplicate short code: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"URL creation failed: {str(e)}")
             return None
         finally:
             conn.close()
