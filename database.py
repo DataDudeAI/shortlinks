@@ -314,6 +314,40 @@ class Database:
         finally:
             conn.close()
 
+    def get_traffic_sources(self, short_code: str) -> Dict[str, Any]:
+        """Get traffic source analysis"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Get UTM source breakdown
+            c.execute('''
+                SELECT 
+                    utm_source,
+                    utm_medium,
+                    utm_campaign,
+                    COUNT(*) as clicks,
+                    COUNT(DISTINCT ip_address) as unique_visitors
+                FROM analytics
+                WHERE short_code = ?
+                GROUP BY utm_source, utm_medium, utm_campaign
+                ORDER BY clicks DESC
+            ''', (short_code,))
+            
+            sources = [{
+                'source': row[0],
+                'medium': row[1],
+                'campaign': row[2],
+                'clicks': row[3],
+                'unique_visitors': row[4]
+            } for row in c.fetchall()]
+
+            return {
+                'sources': sources,
+                'total_sources': len(sources)
+            }
+        finally:
+            conn.close()
+
     def generate_report(self, short_code: str) -> Dict[str, Any]:
         """Generate a comprehensive report for a URL"""
         try:
@@ -331,17 +365,21 @@ class Database:
             # Get geographic data
             geographic_data = self.get_geographic_data(short_code)
 
+            # Get traffic sources
+            traffic_sources = self.get_traffic_sources(short_code)
+
             return {
                 'basic_stats': basic_stats,
                 'analytics_data': analytics_data,
                 'recent_clicks': recent_clicks,
-                'geographic': geographic_data or {},  # Ensure it's never None
+                'geographic': geographic_data or {},
+                'traffic_sources': traffic_sources or {'sources': [], 'total_sources': 0},
                 'conversion_data': {
                     'total_clicks': basic_stats['total_clicks'],
                     'unique_visitors': analytics_data.get('unique_visitors', 0) if analytics_data else 0
                 },
                 'engagement': {
-                    'success_rate': 100.0,  # Default success rate
+                    'success_rate': 100.0,
                     'total_clicks': basic_stats['total_clicks']
                 }
             }
@@ -352,6 +390,7 @@ class Database:
                 'analytics_data': {},
                 'recent_clicks': [],
                 'geographic': {},
+                'traffic_sources': {'sources': [], 'total_sources': 0},
                 'conversion_data': {'total_clicks': 0, 'unique_visitors': 0},
                 'engagement': {'success_rate': 0, 'total_clicks': 0}
             }
