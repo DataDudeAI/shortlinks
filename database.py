@@ -294,3 +294,64 @@ class Database:
             } for row in c.fetchall()]
         finally:
             conn.close() 
+
+    def generate_report(self, short_code: str) -> Dict[str, Any]:
+        """Generate a comprehensive report for a URL"""
+        try:
+            # Get basic stats
+            basic_stats = self.get_url_info(short_code)
+            if not basic_stats:
+                return None
+
+            # Get analytics data
+            analytics_data = self.get_analytics_data(short_code)
+            
+            # Get recent clicks
+            recent_clicks = self.get_recent_clicks(short_code)
+
+            return {
+                'basic_stats': basic_stats,
+                'analytics_data': analytics_data,
+                'recent_clicks': recent_clicks,
+                'conversion_data': {
+                    'total_clicks': basic_stats['total_clicks'],
+                    'unique_visitors': analytics_data.get('unique_visitors', 0) if analytics_data else 0
+                },
+                'engagement': {
+                    'success_rate': 100.0,  # Default success rate
+                    'total_clicks': basic_stats['total_clicks']
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error generating report: {str(e)}")
+            return None
+
+    def get_real_time_stats(self, short_code: str, minutes: int = 5) -> Dict[str, Any]:
+        """Get real-time statistics for the last few minutes"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Get recent activity
+            c.execute('''
+                SELECT COUNT(*) as clicks,
+                       COUNT(DISTINCT ip_address) as visitors
+                FROM analytics
+                WHERE short_code = ?
+                AND clicked_at >= datetime('now', ?)
+            ''', (short_code, f'-{minutes} minutes'))
+            
+            row = c.fetchone()
+            clicks = row[0] if row else 0
+            visitors = row[1] if row else 0
+
+            return {
+                'clicks': clicks,
+                'active_visitors': visitors,
+                'current_success_rate': 100.0,  # Default success rate
+                'time_window': f'{minutes} minutes'
+            }
+        except Exception as e:
+            logger.error(f"Error getting real-time stats: {str(e)}")
+            return {'clicks': 0, 'active_visitors': 0, 'current_success_rate': 0, 'time_window': f'{minutes} minutes'}
+        finally:
+            conn.close() 
