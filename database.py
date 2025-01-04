@@ -295,6 +295,25 @@ class Database:
         finally:
             conn.close() 
 
+    def get_geographic_data(self, short_code: str) -> Dict[str, Any]:
+        """Get geographic analytics data"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Get country breakdown
+            c.execute('''
+                SELECT 
+                    country,
+                    COUNT(*) as clicks
+                FROM analytics
+                WHERE short_code = ?
+                GROUP BY country
+            ''', (short_code,))
+            
+            return dict(c.fetchall())
+        finally:
+            conn.close()
+
     def generate_report(self, short_code: str) -> Dict[str, Any]:
         """Generate a comprehensive report for a URL"""
         try:
@@ -309,10 +328,14 @@ class Database:
             # Get recent clicks
             recent_clicks = self.get_recent_clicks(short_code)
 
+            # Get geographic data
+            geographic_data = self.get_geographic_data(short_code)
+
             return {
                 'basic_stats': basic_stats,
                 'analytics_data': analytics_data,
                 'recent_clicks': recent_clicks,
+                'geographic': geographic_data or {},  # Ensure it's never None
                 'conversion_data': {
                     'total_clicks': basic_stats['total_clicks'],
                     'unique_visitors': analytics_data.get('unique_visitors', 0) if analytics_data else 0
@@ -324,7 +347,14 @@ class Database:
             }
         except Exception as e:
             logger.error(f"Error generating report: {str(e)}")
-            return None
+            return {
+                'basic_stats': {},
+                'analytics_data': {},
+                'recent_clicks': [],
+                'geographic': {},
+                'conversion_data': {'total_clicks': 0, 'unique_visitors': 0},
+                'engagement': {'success_rate': 0, 'total_clicks': 0}
+            }
 
     def get_real_time_stats(self, short_code: str, minutes: int = 5) -> Dict[str, Any]:
         """Get real-time statistics for the last few minutes"""
