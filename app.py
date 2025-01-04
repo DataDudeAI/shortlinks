@@ -47,41 +47,28 @@ class URLShortener:
                 return code
 
     def create_short_url(self, url_data: dict) -> Optional[str]:
+        """Create a short URL"""
         if not url_data.get('url'):
-            st.error('Please enter a URL')
             return None
 
         try:
-            # Clean and validate URL
-            cleaned_url = url_data['url'].strip()
-            if not cleaned_url.startswith(('http://', 'https://')):
-                cleaned_url = 'https://' + cleaned_url
-            
-            if not validators.url(cleaned_url):
-                st.error('Please enter a valid URL')
-                return None
-            
-            # Generate or use custom short code
+            # Generate short code
             short_code = url_data.get('custom_code') or self.generate_short_code()
             
+            # Check if code already exists
+            if self.db.get_url_info(short_code):
+                return None
+            
             # Prepare URL data
-            url_data = {
-                'original_url': cleaned_url,
-                'short_code': short_code,
-                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'utm_params': url_data.get('utm_params', {}),
-                'tags': url_data.get('tags', []),
-                'ab_testing': url_data.get('ab_testing', {})
-            }
+            url_data['short_code'] = short_code
             
             # Save to database
             if self.db.save_url(url_data):
                 return short_code
             return None
-
+        
         except Exception as e:
             logger.error(f"Error creating short URL: {str(e)}")
-            st.error(f"Error creating short URL: {str(e)}")
             return None
 
 def render_analytics_dashboard(shortener):
