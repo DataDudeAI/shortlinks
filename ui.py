@@ -8,6 +8,8 @@ import qrcode
 from PIL import Image
 import json
 import uuid
+from io import BytesIO
+import base64
 
 BASE_URL = "https://shortlinksnandan.streamlit.app"
 
@@ -530,3 +532,14 @@ class UI:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info(f"No {title.lower()} data available") 
+
+    def generate_qr_code(self, url: str) -> str:
+        """Generate QR code for URL"""
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr.add_data(url)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffered = BytesIO()
+        img.save(buffered, format="PNG")
+        return buffered.getvalue() 
