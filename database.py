@@ -733,225 +733,29 @@ class Database:
             'time_analysis': self.get_time_analysis(short_code)
         } 
 
-    def get_campaign_performance(self, short_code: str) -> Dict[str, Any]:
-        """Analyze campaign performance with detailed metrics"""
+    def get_url_info(self, short_code: str) -> Optional[Dict[str, Any]]:
+        """Get URL information for a given short code"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Get campaign metrics
             c.execute('''
-                SELECT 
-                    utm_campaign,
-                    utm_source,
-                    utm_medium,
-                    COUNT(*) as clicks,
-                    COUNT(DISTINCT ip_address) as unique_visitors,
-                    COUNT(DISTINCT CASE WHEN successful = TRUE THEN ip_address END) as conversions,
-                    COUNT(DISTINCT country) as countries,
-                    COUNT(DISTINCT device_type) as devices
-                FROM analytics
-                WHERE short_code = ? AND utm_campaign != 'no campaign'
-                GROUP BY utm_campaign, utm_source, utm_medium
-                ORDER BY clicks DESC
-            ''', (short_code,))
-            
-            campaigns = [{
-                'campaign': row[0],
-                'source': row[1],
-                'medium': row[2],
-                'clicks': row[3],
-                'unique_visitors': row[4],
-                'conversions': row[5],
-                'countries_reached': row[6],
-                'device_types': row[7],
-                'conversion_rate': (row[5] / row[4] * 100) if row[4] > 0 else 0
-            } for row in c.fetchall()]
-
-            return {
-                'campaigns': campaigns,
-                'total_campaigns': len(campaigns),
-                'best_performing': campaigns[0] if campaigns else None
-            }
-        finally:
-            conn.close()
-
-    def get_ab_test_results(self, short_code_a: str, short_code_b: str) -> Dict[str, Any]:
-        """Compare two URLs for A/B testing analysis"""
-        def get_metrics(c, short_code):
-            c.execute('''
-                SELECT 
-                    COUNT(*) as total_clicks,
-                    COUNT(DISTINCT ip_address) as unique_visitors,
-                    COUNT(DISTINCT CASE WHEN successful = TRUE THEN ip_address END) as conversions,
-                    AVG(CASE WHEN successful = TRUE THEN 1 ELSE 0 END) as success_rate
-                FROM analytics
+                SELECT original_url, created_at, total_clicks 
+                FROM urls 
                 WHERE short_code = ?
             ''', (short_code,))
-            return c.fetchone()
-
-        conn = self.get_connection()
-        c = conn.cursor()
-        try:
-            metrics_a = get_metrics(c, short_code_a)
-            metrics_b = get_metrics(c, short_code_b)
-
-            if not metrics_a or not metrics_b:
+            
+            result = c.fetchone()
+            if not result:
                 return None
-
-            return {
-                'variant_a': {
-                    'clicks': metrics_a[0],
-                    'unique_visitors': metrics_a[1],
-                    'conversions': metrics_a[2],
-                    'conversion_rate': (metrics_a[2] / metrics_a[1] * 100) if metrics_a[1] > 0 else 0,
-                    'success_rate': metrics_a[3] * 100 if metrics_a[3] is not None else 0
-                },
-                'variant_b': {
-                    'clicks': metrics_b[0],
-                    'unique_visitors': metrics_b[1],
-                    'conversions': metrics_b[2],
-                    'conversion_rate': (metrics_b[2] / metrics_b[1] * 100) if metrics_b[1] > 0 else 0,
-                    'success_rate': metrics_b[3] * 100 if metrics_b[3] is not None else 0
-                }
-            }
-        finally:
-            conn.close()
-
-    def get_performance_alerts(self, short_code: str) -> List[Dict[str, Any]]:
-        """Generate performance alerts and insights"""
-        conn = self.get_connection()
-        c = conn.cursor()
-        try:
-            alerts = []
-            
-            # Check for significant drop in clicks
-            c.execute('''
-                SELECT 
-                    COUNT(*) as today_clicks,
-                    (
-                        SELECT COUNT(*)
-                        FROM analytics
-                        WHERE short_code = ?
-                        AND clicked_at >= date('now', '-2 days')
-                        AND clicked_at < date('now', '-1 days')
-                    ) as yesterday_clicks
-                FROM analytics
-                WHERE short_code = ?
-                AND clicked_at >= date('now', '-1 days')
-            ''', (short_code, short_code))
-            
-            today, yesterday = c.fetchone()
-            if yesterday > 0 and today < yesterday * 0.5:
-                alerts.append({
-                    'type': 'warning',
-                    'message': f'Click volume dropped by {((yesterday-today)/yesterday*100):.1f}% compared to yesterday',
-                    'metric': 'clicks'
-                })
-
-            # Check for unusual success rate changes
-            c.execute('''
-                SELECT 
-                    AVG(CASE WHEN successful = TRUE THEN 1 ELSE 0 END) as today_rate,
-                    (
-                        SELECT AVG(CASE WHEN successful = TRUE THEN 1 ELSE 0 END)
-                        FROM analytics
-                        WHERE short_code = ?
-                        AND clicked_at >= date('now', '-7 days')
-                        AND clicked_at < date('now', '-1 days')
-                    ) as week_rate
-                FROM analytics
-                WHERE short_code = ?
-                AND clicked_at >= date('now', '-1 days')
-            ''', (short_code, short_code))
-            
-            today_rate, week_rate = c.fetchone()
-            if week_rate and today_rate and abs(today_rate - week_rate) > 0.2:
-                alerts.append({
-                    'type': 'alert',
-                    'message': f'Success rate changed significantly from {week_rate*100:.1f}% to {today_rate*100:.1f}%',
-                    'metric': 'success_rate'
-                })
-
-            return alerts
-        finally:
-            conn.close()
-
-    def export_analytics_data(self, short_code: str, start_date: str = None, end_date: str = None) -> List[Dict[str, Any]]:
-        """Export detailed analytics data for the specified period"""
-        conn = self.get_connection()
-        c = conn.cursor()
-        try:
-            query = '''
-                SELECT 
-                    clicked_at,
-                    ip_address,
-                    country,
-                    device_type,
-                    browser,
-                    os,
-                    utm_source,
-                    utm_medium,
-                    utm_campaign,
-                    referrer,
-                    successful
-                FROM analytics
-                WHERE short_code = ?
-            '''
-            params = [short_code]
-
-            if start_date:
-                query += ' AND clicked_at >= ?'
-                params.append(start_date)
-            if end_date:
-                query += ' AND clicked_at <= ?'
-                params.append(end_date)
-
-            query += ' ORDER BY clicked_at DESC'
-            
-            c.execute(query, params)
-            
-            return [{
-                'timestamp': row[0],
-                'ip_address': row[1],
-                'country': row[2],
-                'device_type': row[3],
-                'browser': row[4],
-                'os': row[5],
-                'utm_source': row[6],
-                'utm_medium': row[7],
-                'utm_campaign': row[8],
-                'referrer': row[9],
-                'successful': row[10]
-            } for row in c.fetchall()]
-        finally:
-            conn.close()
-
-    def get_real_time_stats(self, short_code: str, minutes: int = 5) -> Dict[str, Any]:
-        """Get real-time statistics for the last few minutes"""
-        conn = self.get_connection()
-        c = conn.cursor()
-        try:
-            c.execute('''
-                SELECT 
-                    COUNT(*) as clicks,
-                    COUNT(DISTINCT ip_address) as visitors,
-                    COUNT(DISTINCT country) as countries,
-                    COUNT(DISTINCT device_type) as devices,
-                    AVG(CASE WHEN successful = TRUE THEN 1 ELSE 0 END) as success_rate
-                FROM analytics
-                WHERE short_code = ?
-                AND clicked_at >= datetime('now', ?)
-            ''', (short_code, f'-{minutes} minutes'))
-            
-            row = c.fetchone()
             
             return {
-                'clicks': row[0],
-                'active_visitors': row[1],
-                'active_countries': row[2],
-                'active_devices': row[3],
-                'current_success_rate': row[4] * 100 if row[4] is not None else 0,
-                'time_window': f'{minutes} minutes'
+                'original_url': result[0],
+                'created_at': result[1],
+                'total_clicks': result[2],
+                'short_code': short_code
             }
+        except Exception as e:
+            logger.error(f"Error getting URL info: {str(e)}")
+            return None
         finally:
             conn.close() 
