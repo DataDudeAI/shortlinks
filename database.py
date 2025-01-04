@@ -348,6 +348,46 @@ class Database:
         finally:
             conn.close()
 
+    def get_device_analysis(self, short_code: str) -> Dict[str, Any]:
+        """Get device and browser analytics"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Get device breakdown
+            c.execute('''
+                SELECT device_type, COUNT(*) 
+                FROM analytics 
+                WHERE short_code = ? 
+                GROUP BY device_type
+            ''', (short_code,))
+            devices = dict(c.fetchall())
+
+            # Get browser breakdown
+            c.execute('''
+                SELECT browser, COUNT(*) 
+                FROM analytics 
+                WHERE short_code = ? 
+                GROUP BY browser
+            ''', (short_code,))
+            browsers = dict(c.fetchall())
+
+            # Get OS breakdown
+            c.execute('''
+                SELECT os, COUNT(*) 
+                FROM analytics 
+                WHERE short_code = ? 
+                GROUP BY os
+            ''', (short_code,))
+            os_data = dict(c.fetchall())
+
+            return {
+                'devices': devices or {},
+                'browsers': browsers or {},
+                'operating_systems': os_data or {}
+            }
+        finally:
+            conn.close()
+
     def generate_report(self, short_code: str) -> Dict[str, Any]:
         """Generate a comprehensive report for a URL"""
         try:
@@ -368,12 +408,16 @@ class Database:
             # Get traffic sources
             traffic_sources = self.get_traffic_sources(short_code)
 
+            # Get device analysis
+            device_data = self.get_device_analysis(short_code)
+
             return {
                 'basic_stats': basic_stats,
                 'analytics_data': analytics_data,
                 'recent_clicks': recent_clicks,
                 'geographic': geographic_data or {},
                 'traffic_sources': traffic_sources or {'sources': [], 'total_sources': 0},
+                'devices': device_data,
                 'conversion_data': {
                     'total_clicks': basic_stats['total_clicks'],
                     'unique_visitors': analytics_data.get('unique_visitors', 0) if analytics_data else 0
@@ -391,6 +435,7 @@ class Database:
                 'recent_clicks': [],
                 'geographic': {},
                 'traffic_sources': {'sources': [], 'total_sources': 0},
+                'devices': {'devices': {}, 'browsers': {}, 'operating_systems': {}},
                 'conversion_data': {'total_clicks': 0, 'unique_visitors': 0},
                 'engagement': {'success_rate': 0, 'total_clicks': 0}
             }
