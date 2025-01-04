@@ -24,49 +24,56 @@ class Database:
         """Initialize database with success tracking"""
         conn = self.get_connection()
         c = conn.cursor()
-        
-        # Create tables if they don't exist
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS urls (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                original_url TEXT NOT NULL,
-                short_code TEXT NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                total_clicks INTEGER DEFAULT 0
-            )
-        ''')
-        
-        # Create new analytics table with all fields
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS analytics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                short_code TEXT NOT NULL,
-                clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                utm_source TEXT DEFAULT 'direct',
-                utm_medium TEXT DEFAULT 'none',
-                utm_campaign TEXT DEFAULT 'no campaign',
-                referrer TEXT,
-                user_agent TEXT,
-                ip_address TEXT,
-                country TEXT,
-                device_type TEXT,
-                browser TEXT,
-                os TEXT,
-                successful BOOLEAN DEFAULT TRUE,
-                FOREIGN KEY (short_code) REFERENCES urls (short_code)
-            )
-        ''')
-        
-        # Create indexes for better performance
-        c.execute('''CREATE INDEX IF NOT EXISTS idx_short_code ON urls (short_code)''')
-        c.execute('''CREATE INDEX IF NOT EXISTS idx_analytics_short_code ON analytics (short_code)''')
-        c.execute('''CREATE INDEX IF NOT EXISTS idx_clicked_at ON analytics (clicked_at)''')
-        c.execute('''CREATE INDEX IF NOT EXISTS idx_country ON analytics (country)''')
-        c.execute('''CREATE INDEX IF NOT EXISTS idx_device_type ON analytics (device_type)''')
-        c.execute('''CREATE INDEX IF NOT EXISTS idx_successful ON analytics (successful)''')
-        
-        conn.commit()
-        conn.close()
+        try:
+            # Create tables if they don't exist
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS urls (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    original_url TEXT NOT NULL,
+                    short_code TEXT NOT NULL UNIQUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    total_clicks INTEGER DEFAULT 0
+                )
+            ''')
+            
+            # Drop existing analytics table to update schema
+            c.execute('DROP TABLE IF EXISTS analytics')
+            
+            # Create new analytics table with all fields
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS analytics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    short_code TEXT NOT NULL,
+                    clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    utm_source TEXT DEFAULT 'direct',
+                    utm_medium TEXT DEFAULT 'none',
+                    utm_campaign TEXT DEFAULT 'no campaign',
+                    referrer TEXT,
+                    user_agent TEXT,
+                    ip_address TEXT,
+                    country TEXT,
+                    device_type TEXT,
+                    browser TEXT,
+                    os TEXT,
+                    successful BOOLEAN DEFAULT TRUE,
+                    FOREIGN KEY (short_code) REFERENCES urls (short_code)
+                )
+            ''')
+            
+            # Create indexes after table creation
+            c.execute('''CREATE INDEX IF NOT EXISTS idx_short_code ON urls (short_code)''')
+            c.execute('''CREATE INDEX IF NOT EXISTS idx_analytics_short_code ON analytics (short_code)''')
+            c.execute('''CREATE INDEX IF NOT EXISTS idx_clicked_at ON analytics (clicked_at)''')
+            c.execute('''CREATE INDEX IF NOT EXISTS idx_country ON analytics (country)''')
+            c.execute('''CREATE INDEX IF NOT EXISTS idx_device_type ON analytics (device_type)''')
+            c.execute('''CREATE INDEX IF NOT EXISTS idx_successful ON analytics (successful)''')
+            
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error initializing database: {str(e)}")
+            conn.rollback()
+        finally:
+            conn.close()
 
     # === URL Management Methods ===
 
