@@ -503,7 +503,7 @@ class Database:
         finally:
             conn.close() 
 
-    def get_recent_links(self, limit: int = 3) -> List[Dict]:
+    def get_recent_links(self, limit: int = 3) -> List[tuple]:
         """Get the most recent shortened URLs"""
         conn = self.get_connection()
         c = conn.cursor()
@@ -518,13 +518,7 @@ class Database:
                 ORDER BY created_at DESC 
                 LIMIT ?
             ''', (limit,))
-            
-            # Convert tuple results to dictionaries
-            columns = ['original_url', 'short_code', 'created_at', 'total_clicks']
-            results = []
-            for row in c.fetchall():
-                results.append(dict(zip(columns, row)))
-            return results
+            return c.fetchall()  # Returns list of tuples
         finally:
             conn.close()
 
