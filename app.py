@@ -44,33 +44,23 @@ class URLShortener:
         try:
             # Clean and validate URL
             cleaned_url = url_data['url'].strip()
-            if not cleaned_url.startswith(('http://', 'https://', 'www.')):
-                cleaned_url = 'https://' + cleaned_url.lstrip('www.')
             
-            # Special handling for Facebook URLs
+            # Handle Facebook URLs
             if 'facebook.com' in cleaned_url or 'fb.com' in cleaned_url:
-                # Ensure proper URL format for Facebook
-                if not validators.url(cleaned_url):
-                    st.error('Please enter a valid Facebook URL')
-                    return None
+                if not cleaned_url.startswith(('http://', 'https://')):
+                    cleaned_url = 'https://' + cleaned_url.lstrip('www.')
                 logger.info(f"Processing Facebook URL: {cleaned_url}")
-            elif not validators.url(cleaned_url):
-                st.error('Please enter a valid URL')
-                return None
-
-            # Add UTM parameters if provided
-            if url_data.get('utm_params'):
-                parsed_url = urlparse(cleaned_url)
-                query_params = parse_qs(parsed_url.query)
-                query_params.update(url_data['utm_params'])
-                cleaned_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
-                if query_params:
-                    cleaned_url += f"?{urlencode(query_params, doseq=True)}"
+            else:
+                if not cleaned_url.startswith(('http://', 'https://')):
+                    cleaned_url = 'https://' + cleaned_url
+                if not validators.url(cleaned_url):
+                    st.error('Please enter a valid URL')
+                    return None
 
             # Generate or use custom short code
             short_code = url_data.get('custom_code') or self.generate_short_code()
             
-            # Save to database with updated parameter names
+            # Save to database
             if self.db.save_url(
                 url=cleaned_url,
                 short_code=short_code,
@@ -97,35 +87,73 @@ class URLShortener:
             # Track click
             self.db.increment_clicks(short_code)
             
-            # Clear any existing content
-            st.set_page_config(page_title="Redirecting...", layout="centered")
+            # Clear any existing content and set up page
+            st.set_page_config(
+                page_title="Redirecting...",
+                page_icon="🔄",
+                layout="centered",
+                initial_sidebar_state="collapsed"
+            )
+
+            # Hide all Streamlit elements
             st.markdown("""
                 <style>
-                    #root > div:nth-child(1) > div > div > div > div > section > div {display: none}
+                    #MainMenu {visibility: hidden;}
+                    footer {visibility: hidden;}
+                    .stDeployButton {display:none;}
+                    header {visibility: hidden;}
+                    .stAlert {display: none;}
+                    div[data-testid="stToolbar"] {display: none;}
+                    div[data-testid="stDecoration"] {display: none;}
+                    div[data-testid="stStatusWidget"] {display: none;}
                 </style>
-                """, unsafe_allow_html=True)
-            
-            # Show redirection page with JavaScript
+            """, unsafe_allow_html=True)
+
+            # Direct JavaScript redirect
             html_content = f"""
+                <!DOCTYPE html>
                 <html>
                     <head>
                         <title>Redirecting...</title>
-                        <script>
-                            window.location.href = "{original_url}";
+                        <script type="text/javascript">
+                            window.onload = function() {{
+                                window.top.location.href = "{original_url}";
+                            }}
                         </script>
+                        <meta http-equiv="refresh" content="0;url={original_url}">
                     </head>
-                    <body style="font-family: Arial, sans-serif; text-align: center; padding-top: 50px;">
-                        <h3>Redirecting to your destination...</h3>
-                        <p>If you are not redirected automatically, 
-                           <a href="{original_url}">click here</a>
-                        </p>
+                    <body style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+                        <h2>🔄 Redirecting...</h2>
+                        <p>You will be redirected to your destination in a moment.</p>
+                        <p>If you are not redirected, <a href="{original_url}">click here</a></p>
+                        <button onclick="window.top.location.href='{original_url}'" style="
+                            padding: 10px 20px;
+                            font-size: 16px;
+                            background-color: #0066cc;
+                            color: white;
+                            border: none;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            margin-top: 10px;
+                        ">Continue to Website</button>
                     </body>
                 </html>
             """
+            
+            # Render the HTML
             st.markdown(html_content, unsafe_allow_html=True)
             
-            # Fallback meta refresh
-            st.markdown(f'<meta http-equiv="refresh" content="0;url={original_url}">', unsafe_allow_html=True)
+            # Force reload using JavaScript
+            st.markdown(
+                f"""
+                <script>
+                    if (window.top.location.href !== "{original_url}") {{
+                        window.top.location.replace("{original_url}");
+                    }}
+                </script>
+                """,
+                unsafe_allow_html=True
+            )
         else:
             st.error("Invalid or expired link")
 
