@@ -10,9 +10,13 @@ import json
 import uuid
 from io import BytesIO
 import base64
+import logging
 
 # Define BASE_URL
 BASE_URL = "https://shortlinksnandan.streamlit.app"
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 class UI:
     def __init__(self, url_shortener):
@@ -40,71 +44,44 @@ class UI:
         return buffered.getvalue()
 
     def render_url_form(self):
-        """Render URL input form with UTM parameters and recent links"""
-        with st.form("url_shortener_form", clear_on_submit=True):
-            # Main URL input
-            st.markdown("### 🌐 Enter Your URL")
-            original_url = st.text_input(
-                "URL to shorten",
-                placeholder="https://example.com/your-long-url"
-            )
-
-            # UTM Parameters
-            st.markdown("### 📈 Campaign Parameters (UTM)")
-            col1, col2 = st.columns(2)
-            with col1:
-                utm_source = st.text_input('Campaign Source', placeholder='facebook, google, newsletter')
-                utm_medium = st.text_input('Campaign Medium', placeholder='cpc, banner, email')
-            with col2:
-                utm_campaign = st.text_input('Campaign Name', placeholder='summer_sale')
-                utm_content = st.text_input('Campaign Content', placeholder='blue_banner')
-
-            # QR Code Option
-            enable_qr = st.checkbox("Generate QR Code")
-            if enable_qr:
-                col1, col2 = st.columns(2)
-                with col1:
-                    qr_color = st.color_picker('QR Code Color', '#000000')
-                with col2:
-                    qr_bg_color = st.color_picker('Background Color', '#FFFFFF')
-
-            # Advanced Options in expander
-            with st.expander("⚙️ Advanced Options"):
-                custom_code = st.text_input(
-                    "Custom short code",
-                    placeholder="e.g., summer-sale"
-                )
-                enable_tracking = st.checkbox("Enable Analytics", value=True)
+        """Render the URL shortening form"""
+        with st.form("url_shortener_form"):
+            original_url = st.text_input("Enter URL to shorten")
+            
+            # Advanced options in expander
+            with st.expander("Advanced Options"):
+                custom_code = st.text_input("Custom short code (optional)")
+                enable_tracking = st.checkbox("Enable click tracking", value=True)
+                
+                # UTM Parameters
+                st.markdown("### UTM Parameters (optional)")
+                utm_source = st.text_input("Source")
+                utm_medium = st.text_input("Medium")
+                utm_campaign = st.text_input("Campaign")
+                utm_content = st.text_input("Content")
             
             submitted = st.form_submit_button("Create Short URL")
             
             if submitted and original_url:
                 # Build URL with UTM parameters if provided
+                url_data = {
+                    'url': original_url,
+                    'custom_code': custom_code if custom_code else None,
+                    'tracking': enable_tracking
+                }
+                
+                # Add UTM parameters if any are provided
                 if any([utm_source, utm_medium, utm_campaign, utm_content]):
-                    params = {
+                    url_data['utm_params'] = {
                         'utm_source': utm_source,
                         'utm_medium': utm_medium,
                         'utm_campaign': utm_campaign,
                         'utm_content': utm_content
                     }
-                    # Remove empty parameters
-                    params = {k: v for k, v in params.items() if v}
-                    
-                return {
-                    'url': original_url,
-                    'custom_code': custom_code if custom_code else None,
-                    'qr_code': {
-                        'enabled': enable_qr,
-                        'color': qr_color if enable_qr else '#000000',
-                        'bg_color': qr_bg_color if enable_qr else '#FFFFFF'
-                    },
-                    'tracking': enable_tracking,
-                    'utm_params': params if any([utm_source, utm_medium, utm_campaign, utm_content]) else None
-                }
-        
-        # Show recent links table
-        self.render_recent_links()
-        return None
+                
+                return url_data
+            
+            return None
 
     def render_analytics_dashboard(self, analytics_data: Dict[str, Any]):
         """Enhanced analytics dashboard with A/B testing results"""
@@ -565,32 +542,48 @@ class UI:
         if recent_links:
             # Create DataFrame for the table
             data = []
-            for link in recent_links:
-                created_date = datetime.strptime(link['created_at'], '%Y-%m-%d %H:%M:%S')
-                last_click = self.url_shortener.db.get_last_click_date(link['short_code'])
-                unique_clicks = self.url_shortener.db.get_unique_clicks_count(link['short_code'])
-                
-                data.append({
-                    'Original URL': link['original_url'],
-                    'Short Link': f"{BASE_URL}/?r={link['short_code']}",
-                    'Created Date': created_date.strftime('%Y-%m-%d'),
-                    'Last Click': last_click.strftime('%Y-%m-%d') if last_click else 'Never',
-                    'Total Clicks': link['total_clicks'],
-                    'Unique Clicks': unique_clicks
-                })
+            for link in recent_links:  # recent_links is now a list of dictionaries
+                try:
+                    created_date = datetime.strptime(link['created_at'], '%Y-%m-%d %H:%M:%S')
+                    short_code = link['short_code']
+                    
+                    # Get analytics data
+                    last_click = None
+                    unique_clicks = 0
+                    
+                    try:
+                        last_click = self.url_shortener.db.get_last_click_date(short_code)
+                        unique_clicks = self.url_shortener.db.get_unique_clicks_count(short_code)
+                    except Exception as e:
+                        logger.error(f"Error getting analytics for {short_code}: {str(e)}")
+                    
+                    data.append({
+                        'Original URL': link['original_url'],
+                        'Short Link': f"{BASE_URL}/?r={short_code}",
+                        'Created Date': created_date.strftime('%Y-%m-%d'),
+                        'Last Click': last_click.strftime('%Y-%m-%d') if last_click else 'Never',
+                        'Total Clicks': link['total_clicks'],
+                        'Unique Clicks': unique_clicks
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing link: {str(e)}")
+                    continue
             
-            df = pd.DataFrame(data)
-            st.dataframe(
-                df,
-                column_config={
-                    'Original URL': st.column_config.TextColumn('Original URL', width='medium'),
-                    'Short Link': st.column_config.LinkColumn('Short Link'),
-                    'Created Date': st.column_config.DateColumn('Created'),
-                    'Last Click': st.column_config.DateColumn('Last Click'),
-                    'Total Clicks': st.column_config.NumberColumn('Clicks'),
-                    'Unique Clicks': st.column_config.NumberColumn('Unique')
-                },
-                hide_index=True
-            )
+            if data:
+                df = pd.DataFrame(data)
+                st.dataframe(
+                    df,
+                    column_config={
+                        'Original URL': st.column_config.TextColumn('Original URL', width='medium'),
+                        'Short Link': st.column_config.LinkColumn('Short Link'),
+                        'Created Date': st.column_config.DateColumn('Created'),
+                        'Last Click': st.column_config.TextColumn('Last Click'),
+                        'Total Clicks': st.column_config.NumberColumn('Clicks'),
+                        'Unique Clicks': st.column_config.NumberColumn('Unique')
+                    },
+                    hide_index=True
+                )
+            else:
+                st.info("No valid links to display")
         else:
             st.info("No links created yet!") 
