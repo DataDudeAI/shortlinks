@@ -15,6 +15,7 @@ BASE_URL = "https://shortlinksnandan.streamlit.app"
 
 class UI:
     def __init__(self, url_shortener):
+        """Initialize UI with URL shortener instance"""
         self.url_shortener = url_shortener
 
     def render_url_form(self):
@@ -561,15 +562,15 @@ class UI:
         st.markdown("### 🕒 Recent Links")
         
         # Get last 3 links with their data
-        recent_links = self.shortener.db.get_recent_links(limit=3)
+        recent_links = self.url_shortener.db.get_recent_links(limit=3)
         
         if recent_links:
             # Create DataFrame for the table
             data = []
             for link in recent_links:
                 created_date = datetime.strptime(link['created_at'], '%Y-%m-%d %H:%M:%S')
-                last_click = self.shortener.db.get_last_click_date(link['short_code'])
-                unique_clicks = self.shortener.db.get_unique_clicks_count(link['short_code'])
+                last_click = self.url_shortener.db.get_last_click_date(link['short_code'])
+                unique_clicks = self.url_shortener.db.get_unique_clicks_count(link['short_code'])
                 
                 data.append({
                     'Original URL': link['original_url'],
