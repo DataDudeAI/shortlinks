@@ -87,73 +87,40 @@ class URLShortener:
             # Track click
             self.db.increment_clicks(short_code)
             
-            # Clear any existing content and set up page
-            st.set_page_config(
-                page_title="Redirecting...",
-                page_icon="🔄",
-                layout="centered",
-                initial_sidebar_state="collapsed"
-            )
-
-            # Hide all Streamlit elements
+            # Clear any existing content
+            st.set_page_config(page_title="Redirecting...", layout="centered")
+            
+            # Hide Streamlit elements
             st.markdown("""
                 <style>
                     #MainMenu {visibility: hidden;}
                     footer {visibility: hidden;}
-                    .stDeployButton {display:none;}
                     header {visibility: hidden;}
-                    .stAlert {display: none;}
+                    .stDeployButton {display:none;}
                     div[data-testid="stToolbar"] {display: none;}
-                    div[data-testid="stDecoration"] {display: none;}
-                    div[data-testid="stStatusWidget"] {display: none;}
                 </style>
             """, unsafe_allow_html=True)
-
-            # Direct JavaScript redirect
-            html_content = f"""
-                <!DOCTYPE html>
+            
+            # Simple redirect page
+            st.markdown(f"""
                 <html>
                     <head>
                         <title>Redirecting...</title>
-                        <script type="text/javascript">
-                            window.onload = function() {{
-                                window.top.location.href = "{original_url}";
-                            }}
-                        </script>
-                        <meta http-equiv="refresh" content="0;url={original_url}">
                     </head>
-                    <body style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
-                        <h2>🔄 Redirecting...</h2>
-                        <p>You will be redirected to your destination in a moment.</p>
-                        <p>If you are not redirected, <a href="{original_url}">click here</a></p>
-                        <button onclick="window.top.location.href='{original_url}'" style="
-                            padding: 10px 20px;
-                            font-size: 16px;
-                            background-color: #0066cc;
-                            color: white;
-                            border: none;
-                            border-radius: 5px;
-                            cursor: pointer;
-                            margin-top: 10px;
-                        ">Continue to Website</button>
+                    <body>
+                        <p>Redirecting to your destination...</p>
+                        <script>
+                            window.location.replace("{original_url}");
+                        </script>
                     </body>
                 </html>
-            """
+                <noscript>
+                    <meta http-equiv="refresh" content="0;url={original_url}">
+                </noscript>
+            """, unsafe_allow_html=True)
             
-            # Render the HTML
-            st.markdown(html_content, unsafe_allow_html=True)
-            
-            # Force reload using JavaScript
-            st.markdown(
-                f"""
-                <script>
-                    if (window.top.location.href !== "{original_url}") {{
-                        window.top.location.replace("{original_url}");
-                    }}
-                </script>
-                """,
-                unsafe_allow_html=True
-            )
+            # Fallback link
+            st.markdown(f"<a href='{original_url}'>Click here if not redirected automatically</a>", unsafe_allow_html=True)
         else:
             st.error("Invalid or expired link")
 
@@ -162,9 +129,8 @@ def main():
     shortener = URLShortener()
 
     # Check for redirect parameter first
-    if 'r' in st.query_params:  # Updated from st.experimental_get_query_params()
-        short_code = st.query_params['r']  # No need for [0] as it's not a list anymore
-        logger.info(f"Redirect requested for code: {short_code}")
+    if 'r' in st.query_params:
+        short_code = st.query_params['r']
         shortener.handle_redirect(short_code)
         return
 
