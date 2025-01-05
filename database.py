@@ -146,11 +146,15 @@ class Database:
                 ORDER BY created_at DESC
             ''')
             
-            # Convert tuples to dictionaries
-            columns = ['original_url', 'short_code', 'created_at', 'total_clicks']
+            # Convert tuples to dictionaries explicitly
             results = []
             for row in c.fetchall():
-                results.append(dict(zip(columns, row)))
+                results.append({
+                    'original_url': row[0],
+                    'short_code': row[1],
+                    'created_at': row[2],
+                    'total_clicks': row[3]
+                })
             return results
         finally:
             conn.close()
@@ -205,10 +209,7 @@ class Database:
         try:
             # Get basic URL info
             c.execute('''
-                SELECT 
-                    original_url,
-                    created_at,
-                    total_clicks 
+                SELECT original_url, created_at, total_clicks 
                 FROM urls 
                 WHERE short_code = ?
             ''', (short_code,))
@@ -492,19 +493,21 @@ class Database:
         c = conn.cursor()
         try:
             c.execute('''
-                SELECT 
-                    original_url,
-                    short_code,
-                    created_at,
-                    total_clicks 
+                SELECT original_url, short_code, created_at, total_clicks 
                 FROM urls 
                 ORDER BY created_at DESC 
                 LIMIT ?
             ''', (limit,))
             
-            # Convert tuples to dictionaries
-            columns = ['original_url', 'short_code', 'created_at', 'total_clicks']
-            return [dict(zip(columns, row)) for row in c.fetchall()]
+            results = []
+            for row in c.fetchall():
+                results.append({
+                    'original_url': row[0],
+                    'short_code': row[1],
+                    'created_at': row[2],
+                    'total_clicks': row[3]
+                })
+            return results
         finally:
             conn.close()
 
@@ -533,7 +536,7 @@ class Database:
         c = conn.cursor()
         try:
             c.execute('''
-                SELECT COUNT(DISTINCT ip_address) 
+                SELECT COUNT(DISTINCT ip_address) as unique_clicks
                 FROM analytics 
                 WHERE short_code = ?
             ''', (short_code,))
