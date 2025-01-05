@@ -18,77 +18,67 @@ class UI:
         self.url_shortener = url_shortener
 
     def render_url_form(self):
-        with st.form("url_shortener_form"):
-            url_input = st.text_input('Enter URL to shorten')
-            
-            # Advanced Options
-            with st.expander("Advanced Options"):
-                # Custom short code
-                custom_code = st.text_input('Custom short code (optional)', '')
-                
-                # Link expiration
-                col1, col2 = st.columns(2)
-                with col1:
-                    enable_expiry = st.checkbox('Enable link expiration')
-                with col2:
-                    if enable_expiry:
-                        expiry_days = st.number_input('Expire after days', min_value=1, value=30)
-                
-                # A/B Testing
-                enable_ab = st.checkbox('Enable A/B Testing')
-                if enable_ab:
-                    variant_b_url = st.text_input('Variant B URL')
-                    split_ratio = st.slider('Traffic Split (A/B)', 0, 100, 50)
-                
-                # Link grouping/tagging
-                tags = st.multiselect('Add tags', 
-                    ['Personal', 'Business', 'Marketing', 'Social', 'Other'],
-                    default=None)
-                
-                # QR Code customization
-                enable_qr = st.checkbox('Generate QR Code')
-                if enable_qr:
-                    qr_color = st.color_picker('QR Code Color', '#000000')
-                    qr_bg_color = st.color_picker('Background Color', '#FFFFFF')
-            
+        """Render URL input form with UTM parameters and recent links"""
+        with st.form("url_shortener_form", clear_on_submit=True):
+            # Main URL input
+            st.markdown("### 🌐 Enter Your URL")
+            original_url = st.text_input(
+                "URL to shorten",
+                placeholder="https://example.com/your-long-url"
+            )
+
             # UTM Parameters
-            with st.expander("Campaign Parameters (UTM)"):
-                utm_source = st.text_input('Campaign Source (e.g., facebook, twitter)', '')
-                utm_medium = st.text_input('Campaign Medium (e.g., social, email)', '')
-                utm_campaign = st.text_input('Campaign Name', '')
-                utm_term = st.text_input('Campaign Term (for paid search)', '')
-                utm_content = st.text_input('Campaign Content (for A/B testing)', '')
+            st.markdown("### 📈 Campaign Parameters (UTM)")
+            col1, col2 = st.columns(2)
+            with col1:
+                utm_source = st.text_input('Campaign Source', placeholder='facebook, google, newsletter')
+                utm_medium = st.text_input('Campaign Medium', placeholder='cpc, banner, email')
+            with col2:
+                utm_campaign = st.text_input('Campaign Name', placeholder='summer_sale')
+                utm_content = st.text_input('Campaign Content', placeholder='blue_banner')
+
+            # Advanced Options in expander
+            with st.expander("⚙️ Advanced Options"):
+                custom_code = st.text_input(
+                    "Custom short code",
+                    placeholder="e.g., summer-sale"
+                )
+                enable_tracking = st.checkbox("Enable Analytics", value=True)
+
+            # QR Code Option
+            enable_qr = st.checkbox("Generate QR Code")
+            if enable_qr:
+                qr_color = st.color_picker('QR Code Color', '#000000')
+                qr_bg_color = st.color_picker('Background Color', '#FFFFFF')
             
             submitted = st.form_submit_button("Create Short URL")
             
-            if submitted:
-                expiry_date = None
-                if enable_expiry:
-                    expiry_date = (datetime.now() + timedelta(days=expiry_days)).strftime('%Y-%m-%d %H:%M:%S')
-                
+            if submitted and original_url:
+                # Build URL with UTM parameters if provided
+                if any([utm_source, utm_medium, utm_campaign, utm_content]):
+                    params = {
+                        'utm_source': utm_source,
+                        'utm_medium': utm_medium,
+                        'utm_campaign': utm_campaign,
+                        'utm_content': utm_content
+                    }
+                    # Remove empty parameters
+                    params = {k: v for k, v in params.items() if v}
+                    
                 return {
-                    'url': url_input,
+                    'url': original_url,
                     'custom_code': custom_code if custom_code else None,
-                    'expiry_date': expiry_date,
-                    'ab_testing': {
-                        'enabled': enable_ab,
-                        'variant_b_url': variant_b_url if enable_ab else None,
-                        'split_ratio': split_ratio if enable_ab else None
-                    },
-                    'tags': tags,
                     'qr_code': {
                         'enabled': enable_qr,
                         'color': qr_color if enable_qr else '#000000',
                         'bg_color': qr_bg_color if enable_qr else '#FFFFFF'
                     },
-                    'utm_params': {
-                        'utm_source': utm_source,
-                        'utm_medium': utm_medium,
-                        'utm_campaign': utm_campaign,
-                        'utm_term': utm_term,
-                        'utm_content': utm_content
-                    }
+                    'tracking': enable_tracking,
+                    'utm_params': params if any([utm_source, utm_medium, utm_campaign, utm_content]) else None
                 }
+        
+        # Show recent links table
+        self.render_recent_links()
         return None
 
     def generate_qr_code(self, url: str, color: str = '#000000', bg_color: str = '#FFFFFF') -> Image:
@@ -565,3 +555,43 @@ class UI:
                 f"qr_code_{short_code}.png",
                 "image/png"
             ) 
+
+    def render_recent_links(self):
+        """Display table of recent shortened links"""
+        st.markdown("### 🕒 Recent Links")
+        
+        # Get last 3 links with their data
+        recent_links = self.shortener.db.get_recent_links(limit=3)
+        
+        if recent_links:
+            # Create DataFrame for the table
+            data = []
+            for link in recent_links:
+                created_date = datetime.strptime(link['created_at'], '%Y-%m-%d %H:%M:%S')
+                last_click = self.shortener.db.get_last_click_date(link['short_code'])
+                unique_clicks = self.shortener.db.get_unique_clicks_count(link['short_code'])
+                
+                data.append({
+                    'Original URL': link['original_url'],
+                    'Short Link': f"{BASE_URL}/?r={link['short_code']}",
+                    'Created Date': created_date.strftime('%Y-%m-%d'),
+                    'Last Click': last_click.strftime('%Y-%m-%d') if last_click else 'Never',
+                    'Total Clicks': link['total_clicks'],
+                    'Unique Clicks': unique_clicks
+                })
+            
+            df = pd.DataFrame(data)
+            st.dataframe(
+                df,
+                column_config={
+                    'Original URL': st.column_config.TextColumn('Original URL', width='medium'),
+                    'Short Link': st.column_config.LinkColumn('Short Link'),
+                    'Created Date': st.column_config.DateColumn('Created'),
+                    'Last Click': st.column_config.DateColumn('Last Click'),
+                    'Total Clicks': st.column_config.NumberColumn('Clicks'),
+                    'Unique Clicks': st.column_config.NumberColumn('Unique')
+                },
+                hide_index=True
+            )
+        else:
+            st.info("No links created yet!") 
