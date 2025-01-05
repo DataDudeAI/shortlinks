@@ -565,18 +565,17 @@ class UI:
         if recent_links:
             # Create DataFrame for the table
             data = []
-            for original_url, short_code, created_at, total_clicks in recent_links:
-                # Unpack the tuple values directly
-                created_date = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S')
-                last_click = self.url_shortener.db.get_last_click_date(short_code)
-                unique_clicks = self.url_shortener.db.get_unique_clicks_count(short_code)
+            for link in recent_links:
+                created_date = datetime.strptime(link['created_at'], '%Y-%m-%d %H:%M:%S')
+                last_click = self.url_shortener.db.get_last_click_date(link['short_code'])
+                unique_clicks = self.url_shortener.db.get_unique_clicks_count(link['short_code'])
                 
                 data.append({
-                    'Original URL': original_url,
-                    'Short Link': f"{BASE_URL}/?r={short_code}",
+                    'Original URL': link['original_url'],
+                    'Short Link': f"{BASE_URL}/?r={link['short_code']}",
                     'Created Date': created_date.strftime('%Y-%m-%d'),
                     'Last Click': last_click.strftime('%Y-%m-%d') if last_click else 'Never',
-                    'Total Clicks': total_clicks,
+                    'Total Clicks': link['total_clicks'],
                     'Unique Clicks': unique_clicks
                 })
             
