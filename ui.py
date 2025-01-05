@@ -543,3 +543,25 @@ class UI:
         buffered = BytesIO()
         img.save(buffered, format="PNG")
         return buffered.getvalue() 
+
+    def render_success_message(self, shortened_url: str):
+        """Display success message and shortened URL"""
+        st.success("🎉 URL shortened successfully!")
+        st.markdown("### Your shortened URL:")
+        col1, col2 = st.columns([3,1])
+        with col1:
+            st.code(shortened_url, language=None)
+        with col2:
+            st.button("📋 Copy", on_click=lambda: st.write(f"```{shortened_url}```"))
+
+    def render_qr_code_section(self, url: str, short_code: str):
+        """Display QR code section"""
+        with st.expander("📱 QR Code", expanded=True):
+            qr_code = self.generate_qr_code(url)
+            st.image(qr_code, caption="Scan this QR code")
+            st.download_button(
+                "⬇️ Download QR Code",
+                qr_code,
+                f"qr_code_{short_code}.png",
+                "image/png"
+            ) 
