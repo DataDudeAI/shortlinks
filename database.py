@@ -132,22 +132,26 @@ class Database:
             conn.close()
 
     def get_all_urls(self) -> List[Dict[str, Any]]:
-        """Get all URLs with their basic info"""
+        """Get all URLs from the database"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
             c.execute('''
-                SELECT short_code, original_url, created_at, total_clicks
-                FROM urls
+                SELECT 
+                    original_url,
+                    short_code,
+                    created_at,
+                    total_clicks 
+                FROM urls 
                 ORDER BY created_at DESC
             ''')
             
-            return [{
-                'short_code': row[0],
-                'original_url': row[1],
-                'created_at': row[2],
-                'total_clicks': row[3]
-            } for row in c.fetchall()]
+            # Convert tuples to dictionaries
+            columns = ['original_url', 'short_code', 'created_at', 'total_clicks']
+            results = []
+            for row in c.fetchall():
+                results.append(dict(zip(columns, row)))
+            return results
         finally:
             conn.close()
 
@@ -195,56 +199,33 @@ class Database:
             conn.close()
 
     def get_analytics_data(self, short_code: str) -> Dict[str, Any]:
-        """Get comprehensive analytics data"""
+        """Get analytics data for a URL"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
             # Get basic URL info
-            url_info = self.get_url_info(short_code)
-            if not url_info:
-                return None
-
-            # Get unique visitors
             c.execute('''
-                SELECT COUNT(DISTINCT ip_address) 
-                FROM analytics 
+                SELECT 
+                    original_url,
+                    created_at,
+                    total_clicks 
+                FROM urls 
                 WHERE short_code = ?
             ''', (short_code,))
-            unique_visitors = c.fetchone()[0]
-
-            # Get device breakdown
-            c.execute('''
-                SELECT device_type, COUNT(*) 
-                FROM analytics 
-                WHERE short_code = ? 
-                GROUP BY device_type
-            ''', (short_code,))
-            devices = dict(c.fetchall())
-
-            # Get browser breakdown
-            c.execute('''
-                SELECT browser, COUNT(*) 
-                FROM analytics 
-                WHERE short_code = ? 
-                GROUP BY browser
-            ''', (short_code,))
-            browsers = dict(c.fetchall())
-
-            # Get country breakdown
-            c.execute('''
-                SELECT country, COUNT(*) 
-                FROM analytics 
-                WHERE short_code = ? 
-                GROUP BY country
-            ''', (short_code,))
-            countries = dict(c.fetchall())
-
+            
+            result = c.fetchone()
+            if not result:
+                return None
+            
+            # Get unique clicks
+            unique_clicks = self.get_unique_clicks_count(short_code)
+            
             return {
-                **url_info,
-                'unique_visitors': unique_visitors,
-                'devices': devices,
-                'browsers': browsers,
-                'countries': countries
+                'original_url': result[0],
+                'created_at': result[1],
+                'total_clicks': result[2],
+                'unique_clicks': unique_clicks,
+                'short_code': short_code
             }
         finally:
             conn.close()
@@ -547,12 +528,12 @@ class Database:
             conn.close()
 
     def get_unique_clicks_count(self, short_code: str) -> int:
-        """Get count of unique clicks based on IP address"""
+        """Get count of unique clicks for a URL"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
             c.execute('''
-                SELECT COUNT(DISTINCT ip_address) as count
+                SELECT COUNT(DISTINCT ip_address) 
                 FROM analytics 
                 WHERE short_code = ?
             ''', (short_code,))
