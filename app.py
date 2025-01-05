@@ -162,6 +162,25 @@ def main():
         short_code = params['r']
         url_info = shortener.db.get_url_info(short_code)
         if url_info:
+            # Save analytics data
+            analytics_data = {
+                'short_code': short_code,
+                'ip_address': st.get_client_ip(),
+                'user_agent': st.get_user_agent(),
+                'referrer': st.get_referrer() if hasattr(st, 'get_referrer') else None,
+                'utm_source': params.get('utm_source', 'direct'),
+                'utm_medium': params.get('utm_medium', 'none'),
+                'utm_campaign': params.get('utm_campaign', 'no campaign'),
+                'country': 'Unknown',  # You can add IP-based geolocation if needed
+                'device_type': 'desktop' if 'desktop' in st.get_user_agent().lower() else 'mobile',
+                'browser': st.get_user_agent().split('/')[0],
+                'os': 'Unknown'
+            }
+            
+            # Save the click
+            shortener.db.save_analytics(analytics_data)
+            
+            # Redirect to original URL
             original_url = url_info['original_url']
             st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{original_url}\'">', unsafe_allow_html=True)
             return
