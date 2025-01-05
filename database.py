@@ -509,11 +509,22 @@ class Database:
         c = conn.cursor()
         try:
             c.execute('''
-                SELECT * FROM urls 
+                SELECT 
+                    original_url,
+                    short_code,
+                    created_at,
+                    total_clicks 
+                FROM urls 
                 ORDER BY created_at DESC 
                 LIMIT ?
             ''', (limit,))
-            return c.fetchall()
+            
+            # Convert tuple results to dictionaries
+            columns = ['original_url', 'short_code', 'created_at', 'total_clicks']
+            results = []
+            for row in c.fetchall():
+                results.append(dict(zip(columns, row)))
+            return results
         finally:
             conn.close()
 
@@ -530,7 +541,7 @@ class Database:
                 LIMIT 1
             ''', (short_code,))
             result = c.fetchone()
-            return datetime.strptime(result['clicked_at'], '%Y-%m-%d %H:%M:%S') if result else None
+            return datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S') if result else None
         finally:
             conn.close()
 
@@ -540,10 +551,11 @@ class Database:
         c = conn.cursor()
         try:
             c.execute('''
-                SELECT COUNT(DISTINCT ip_address) 
+                SELECT COUNT(DISTINCT ip_address) as count
                 FROM analytics 
                 WHERE short_code = ?
             ''', (short_code,))
-            return c.fetchone()[0]
+            result = c.fetchone()
+            return result[0] if result else 0
         finally:
             conn.close() 
