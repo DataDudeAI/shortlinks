@@ -484,3 +484,21 @@ class Database:
             return {'clicks': 0, 'active_visitors': 0, 'current_success_rate': 0, 'time_window': f'{minutes} minutes'}
         finally:
             conn.close() 
+
+    def increment_clicks(self, short_code: str) -> bool:
+        """Increment the click count for a URL"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('''
+                UPDATE urls 
+                SET total_clicks = total_clicks + 1 
+                WHERE short_code = ?
+            ''', (short_code,))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error incrementing clicks: {str(e)}")
+            return False
+        finally:
+            conn.close() 
