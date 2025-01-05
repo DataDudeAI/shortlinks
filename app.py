@@ -44,10 +44,17 @@ class URLShortener:
         try:
             # Clean and validate URL
             cleaned_url = url_data['url'].strip()
-            if not cleaned_url.startswith(('http://', 'https://')):
-                cleaned_url = 'https://' + cleaned_url
+            if not cleaned_url.startswith(('http://', 'https://', 'www.')):
+                cleaned_url = 'https://' + cleaned_url.lstrip('www.')
             
-            if not validators.url(cleaned_url):
+            # Special handling for Facebook URLs
+            if 'facebook.com' in cleaned_url or 'fb.com' in cleaned_url:
+                # Ensure proper URL format for Facebook
+                if not validators.url(cleaned_url):
+                    st.error('Please enter a valid Facebook URL')
+                    return None
+                logger.info(f"Processing Facebook URL: {cleaned_url}")
+            elif not validators.url(cleaned_url):
                 st.error('Please enter a valid URL')
                 return None
 
@@ -63,15 +70,17 @@ class URLShortener:
             # Generate or use custom short code
             short_code = url_data.get('custom_code') or self.generate_short_code()
             
-            # Save to database
-            self.db.save_url(
-                original_url=cleaned_url,
+            # Save to database with updated parameter names
+            if self.db.save_url(
+                url=cleaned_url,
                 short_code=short_code,
                 enable_tracking=url_data.get('tracking', True)
-            )
-            
-            logger.info(f"Successfully created short URL: {short_code}")
-            return short_code
+            ):
+                logger.info(f"Successfully created short URL: {short_code}")
+                return short_code
+            else:
+                st.error("Failed to save URL")
+                return None
 
         except Exception as e:
             logger.error(f"Error creating short URL: {str(e)}")
@@ -82,31 +91,53 @@ class URLShortener:
         """Handle URL redirection"""
         url_info = self.db.get_url_info(short_code)
         if url_info:
-            # Track click if analytics is enabled
-            if url_info.get('enable_tracking'):
-                self.db.track_click(
-                    short_code=short_code,
-                    ip_address=st.get_client_ip(),
-                    user_agent=st.get_user_agent(),
-                    referrer=st.get_referrer()
-                )
-            
-            # Redirect to original URL
             original_url = url_info['original_url']
-            st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{original_url}\'">', unsafe_allow_html=True)
-            return
+            logger.info(f"Redirecting to: {original_url}")
+            
+            # Track click
+            self.db.increment_clicks(short_code)
+            
+            # Clear any existing content
+            st.set_page_config(page_title="Redirecting...", layout="centered")
+            st.markdown("""
+                <style>
+                    #root > div:nth-child(1) > div > div > div > div > section > div {display: none}
+                </style>
+                """, unsafe_allow_html=True)
+            
+            # Show redirection page with JavaScript
+            html_content = f"""
+                <html>
+                    <head>
+                        <title>Redirecting...</title>
+                        <script>
+                            window.location.href = "{original_url}";
+                        </script>
+                    </head>
+                    <body style="font-family: Arial, sans-serif; text-align: center; padding-top: 50px;">
+                        <h3>Redirecting to your destination...</h3>
+                        <p>If you are not redirected automatically, 
+                           <a href="{original_url}">click here</a>
+                        </p>
+                    </body>
+                </html>
+            """
+            st.markdown(html_content, unsafe_allow_html=True)
+            
+            # Fallback meta refresh
+            st.markdown(f'<meta http-equiv="refresh" content="0;url={original_url}">', unsafe_allow_html=True)
         else:
             st.error("Invalid or expired link")
-            return
 
 def main():
     # Initialize shortener
     shortener = URLShortener()
 
-    # Check for redirect parameter
-    query_params = st.experimental_get_query_params()
-    if 'r' in query_params:
-        shortener.handle_redirect(query_params['r'][0])
+    # Check for redirect parameter first
+    if 'r' in st.query_params:  # Updated from st.experimental_get_query_params()
+        short_code = st.query_params['r']  # No need for [0] as it's not a list anymore
+        logger.info(f"Redirect requested for code: {short_code}")
+        shortener.handle_redirect(short_code)
         return
 
     # Sidebar navigation
