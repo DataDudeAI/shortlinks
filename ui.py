@@ -11,6 +11,7 @@ import uuid
 from io import BytesIO
 import base64
 
+# Define BASE_URL
 BASE_URL = "https://shortlinksnandan.streamlit.app"
 
 class UI:
