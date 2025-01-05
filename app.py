@@ -4,11 +4,10 @@ from ui import UI
 import validators
 import string
 import random
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 import logging
 from typing import Optional
-import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +28,7 @@ class URLShortener:
         self.ui = UI(self)
 
     def generate_short_code(self, length=6):
+        """Generate a unique short code"""
         characters = string.ascii_letters + string.digits
         while True:
             code = ''.join(random.choice(characters) for _ in range(length))
@@ -36,6 +36,7 @@ class URLShortener:
                 return code
 
     def create_short_url(self, url_data: dict) -> Optional[str]:
+        """Create a shortened URL with optional UTM parameters"""
         if not url_data.get('url'):
             st.error('Please enter a URL')
             return None
@@ -49,56 +50,46 @@ class URLShortener:
             if not validators.url(cleaned_url):
                 st.error('Please enter a valid URL')
                 return None
-            
+
+            # Add UTM parameters if provided
+            if url_data.get('utm_params'):
+                parsed_url = urlparse(cleaned_url)
+                query_params = parse_qs(parsed_url.query)
+                query_params.update(url_data['utm_params'])
+                cleaned_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
+                if query_params:
+                    cleaned_url += f"?{urlencode(query_params, doseq=True)}"
+
             # Generate or use custom short code
             short_code = url_data.get('custom_code') or self.generate_short_code()
             
-            # Save URL
-            data = {
-                'url': cleaned_url,
-                'short_code': short_code
-            }
+            # Save to database
+            self.db.save_url(
+                original_url=cleaned_url,
+                short_code=short_code,
+                enable_tracking=url_data.get('tracking', True)
+            )
             
-            if self.db.save_url(data):
-                return short_code
-            else:
-                st.error('Error creating short URL')
-                return None
-                
+            logger.info(f"Successfully created short URL: {short_code}")
+            return short_code
+
         except Exception as e:
-            logger.error(f"Error creating URL: {str(e)}")
-            st.error('Error creating short URL')
+            logger.error(f"Error creating short URL: {str(e)}")
+            st.error("An error occurred while creating the short URL")
             return None
 
-def main():
-    shortener = URLShortener()
-    
-    # Check if this is a redirect request
-    params = st.query_params
-    if 'r' in params:
-        short_code = params['r']
-        url_info = shortener.db.get_url_info(short_code)
+    def handle_redirect(self, short_code: str):
+        """Handle URL redirection"""
+        url_info = self.db.get_url_info(short_code)
         if url_info:
-            # Save basic analytics data
-            analytics_data = {
-                'short_code': short_code,
-                'ip_address': 'Unknown',
-                'user_agent': 'Unknown',
-                'referrer': None,
-                'utm_source': params.get('utm_source', 'direct'),
-                'utm_medium': params.get('utm_medium', 'none'),
-                'utm_campaign': params.get('utm_campaign', 'no campaign'),
-                'country': 'Unknown',
-                'device_type': 'unknown',
-                'browser': 'unknown',
-                'os': 'Unknown'
-            }
-            
-            # Save the click
-            shortener.db.save_analytics(analytics_data)
-            
-            # Increment click count
-            shortener.db.increment_clicks(short_code)
+            # Track click if analytics is enabled
+            if url_info.get('enable_tracking'):
+                self.db.track_click(
+                    short_code=short_code,
+                    ip_address=st.get_client_ip(),
+                    user_agent=st.get_user_agent(),
+                    referrer=st.get_referrer()
+                )
             
             # Redirect to original URL
             original_url = url_info['original_url']
@@ -107,6 +98,16 @@ def main():
         else:
             st.error("Invalid or expired link")
             return
+
+def main():
+    # Initialize shortener
+    shortener = URLShortener()
+
+    # Check for redirect parameter
+    query_params = st.experimental_get_query_params()
+    if 'r' in query_params:
+        shortener.handle_redirect(query_params['r'][0])
+        return
 
     # Sidebar navigation
     with st.sidebar:
@@ -131,7 +132,12 @@ def main():
                 
                 # Display QR code if enabled
                 if form_data.get('qr_code', {}).get('enabled'):
-                    shortener.ui.render_qr_code_section(shortened_url, short_code)
+                    shortener.ui.render_qr_code_section(
+                        shortened_url, 
+                        short_code,
+                        form_data['qr_code']['color'],
+                        form_data['qr_code']['bg_color']
+                    )
 
     else:  # Analytics Dashboard
         st.title("Analytics Dashboard")
