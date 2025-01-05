@@ -536,54 +536,52 @@ class UI:
         """Display table of recent shortened links"""
         st.markdown("### 🕒 Recent Links")
         
-        # Get last 3 links with their data
-        recent_links = self.url_shortener.db.get_recent_links(limit=3)
-        
-        if recent_links:
-            # Create DataFrame for the table
-            data = []
-            for link in recent_links:  # recent_links is now a list of dictionaries
-                try:
-                    created_date = datetime.strptime(link['created_at'], '%Y-%m-%d %H:%M:%S')
-                    short_code = link['short_code']
-                    
-                    # Get analytics data
-                    last_click = None
-                    unique_clicks = 0
-                    
-                    try:
-                        last_click = self.url_shortener.db.get_last_click_date(short_code)
-                        unique_clicks = self.url_shortener.db.get_unique_clicks_count(short_code)
-                    except Exception as e:
-                        logger.error(f"Error getting analytics for {short_code}: {str(e)}")
-                    
-                    data.append({
-                        'Original URL': link['original_url'],
-                        'Short Link': f"{BASE_URL}/?r={short_code}",
-                        'Created Date': created_date.strftime('%Y-%m-%d'),
-                        'Last Click': last_click.strftime('%Y-%m-%d') if last_click else 'Never',
-                        'Total Clicks': link['total_clicks'],
-                        'Unique Clicks': unique_clicks
-                    })
-                except Exception as e:
-                    logger.error(f"Error processing link: {str(e)}")
-                    continue
+        try:
+            # Get last 3 links with their data
+            recent_links = self.url_shortener.db.get_recent_links(limit=3)
             
-            if data:
-                df = pd.DataFrame(data)
-                st.dataframe(
-                    df,
-                    column_config={
-                        'Original URL': st.column_config.TextColumn('Original URL', width='medium'),
-                        'Short Link': st.column_config.LinkColumn('Short Link'),
-                        'Created Date': st.column_config.DateColumn('Created'),
-                        'Last Click': st.column_config.TextColumn('Last Click'),
-                        'Total Clicks': st.column_config.NumberColumn('Clicks'),
-                        'Unique Clicks': st.column_config.NumberColumn('Unique')
-                    },
-                    hide_index=True
-                )
+            if recent_links:
+                # Create DataFrame for the table
+                data = []
+                for link in recent_links:
+                    try:
+                        created_date = datetime.strptime(link['created_at'], '%Y-%m-%d %H:%M:%S')
+                        
+                        # Get analytics data safely
+                        last_click = self.url_shortener.db.get_last_click_date(link['short_code'])
+                        unique_clicks = self.url_shortener.db.get_unique_clicks_count(link['short_code'])
+                        
+                        data.append({
+                            'Original URL': link['original_url'],
+                            'Short Link': f"{BASE_URL}/?r={link['short_code']}",
+                            'Created': created_date.strftime('%Y-%m-%d'),
+                            'Last Click': last_click.strftime('%Y-%m-%d') if last_click else 'Never',
+                            'Clicks': link['total_clicks'],
+                            'Unique': unique_clicks
+                        })
+                    except Exception as e:
+                        logger.error(f"Error processing link data: {str(e)}")
+                        continue
+                
+                if data:
+                    df = pd.DataFrame(data)
+                    st.dataframe(
+                        df,
+                        column_config={
+                            'Original URL': st.column_config.TextColumn('Original URL', width='medium'),
+                            'Short Link': st.column_config.LinkColumn('Short Link'),
+                            'Created': st.column_config.DateColumn('Created'),
+                            'Last Click': st.column_config.TextColumn('Last Click'),
+                            'Clicks': st.column_config.NumberColumn('Total Clicks'),
+                            'Unique': st.column_config.NumberColumn('Unique Clicks')
+                        },
+                        hide_index=True
+                    )
+                else:
+                    st.info("No valid links to display")
             else:
-                st.info("No valid links to display")
-        else:
-            st.info("No links created yet!") 
+                st.info("No links created yet!")
+                
+        except Exception as e:
+            logger.error(f"Error rendering recent links: {str(e)}")
+            st.error("Error loading recent links") 
