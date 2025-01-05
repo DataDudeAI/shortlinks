@@ -18,45 +18,10 @@ logger = logging.getLogger(__name__)
 st.set_page_config(
     page_title="URL Shortener",
     page_icon="🔗",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
 BASE_URL = "https://shortlinksnandan.streamlit.app"
-
-def render_analytics_dashboard(shortener):
-    st.title("📊 Analytics Dashboard")
-    
-    # Get all URLs
-    urls = shortener.db.get_all_urls()
-    if not urls:
-        st.info("🔍 No URLs found. Create some links first!")
-        return
-    
-    # URL Selection
-    selected_urls = st.multiselect(
-        "Select URLs to analyze",
-        options=[url['short_code'] for url in urls],
-        default=[urls[0]['short_code']] if urls else None
-    )
-    
-    if not selected_urls:
-        st.warning("⚠️ Please select at least one URL to analyze")
-        return
-    
-    # Analytics for each selected URL
-    for short_code in selected_urls:
-        analytics = shortener.db.generate_report(short_code)
-        if analytics:
-            shortener.ui.render_analytics_dashboard({
-                'total_clicks': analytics['basic_stats']['total_clicks'],
-                'unique_visitors': analytics['conversion_data']['unique_visitors'],
-                'success_rate': analytics['engagement']['success_rate'],
-                'countries_count': len(analytics['geographic']),
-                'traffic_sources': analytics['traffic_sources']['sources'],
-                'geographic_data': analytics['geographic'],
-                'device_data': analytics['devices']['devices']
-            })
 
 class URLShortener:
     def __init__(self):
@@ -72,7 +37,7 @@ class URLShortener:
 
     def create_short_url(self, url_data: dict) -> Optional[str]:
         if not url_data.get('url'):
-            st.error('⚠️ Please enter a URL')
+            st.error('Please enter a URL')
             return None
 
         try:
@@ -82,7 +47,7 @@ class URLShortener:
                 cleaned_url = 'https://' + cleaned_url
             
             if not validators.url(cleaned_url):
-                st.error('⚠️ Please enter a valid URL')
+                st.error('Please enter a valid URL')
                 return None
             
             # Generate or use custom short code
@@ -97,12 +62,12 @@ class URLShortener:
             if self.db.save_url(data):
                 return short_code
             else:
-                st.error('❌ Error creating short URL')
+                st.error('Error creating short URL')
                 return None
                 
         except Exception as e:
             logger.error(f"Error creating URL: {str(e)}")
-            st.error('❌ Error creating short URL')
+            st.error('Error creating short URL')
             return None
 
 def main():
@@ -140,7 +105,7 @@ def main():
             st.markdown(f'<meta http-equiv="refresh" content="0;URL=\'{original_url}\'">', unsafe_allow_html=True)
             return
         else:
-            st.error("❌ Invalid or expired link")
+            st.error("Invalid or expired link")
             return
 
     # Sidebar navigation
@@ -149,15 +114,11 @@ def main():
         st.markdown("---")
         page = st.radio(
             "Navigation",
-            ["🎯 Create URL", "📊 Analytics Dashboard"]
+            ["Create URL", "Analytics Dashboard"]
         )
-        st.markdown("---")
-        st.markdown("### About")
-        st.markdown("Create short, trackable links with comprehensive analytics.")
 
-    if page == "🎯 Create URL":
+    if page == "Create URL":
         st.title("Create Short URL")
-        st.markdown("### Create your shortened URL below")
         
         form_data = shortener.ui.render_url_form()
         if form_data:
@@ -173,7 +134,18 @@ def main():
                     shortener.ui.render_qr_code_section(shortened_url, short_code)
 
     else:  # Analytics Dashboard
-        render_analytics_dashboard(shortener)
+        st.title("Analytics Dashboard")
+        urls = shortener.db.get_all_urls()
+        if urls:
+            for url in urls:
+                with st.expander(f"Analytics for {url['short_code']}", expanded=False):
+                    analytics = shortener.db.get_analytics_data(url['short_code'])
+                    if analytics:
+                        st.metric("Total Clicks", url['total_clicks'])
+                        st.metric("Original URL", url['original_url'])
+                        st.markdown(f"Short URL: `{BASE_URL}/?r={url['short_code']}`")
+        else:
+            st.info("No URLs found. Create some links first!")
 
 if __name__ == "__main__":
     main() 
