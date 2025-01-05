@@ -19,6 +19,26 @@ class UI:
         """Initialize UI with URL shortener instance"""
         self.url_shortener = url_shortener
 
+    def generate_qr_code(self, url: str, color: str = '#000000', bg_color: str = '#FFFFFF') -> bytes:
+        """Generate QR code for URL with custom colors"""
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(url)
+        qr.make(fit=True)
+
+        # Convert hex colors to RGB
+        fill_color = tuple(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+        back_color = tuple(int(bg_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+
+        img = qr.make_image(fill_color=fill_color, back_color=back_color)
+        buffered = BytesIO()
+        img.save(buffered, format="PNG")
+        return buffered.getvalue()
+
     def render_url_form(self):
         """Render URL input form with UTM parameters and recent links"""
         with st.form("url_shortener_form", clear_on_submit=True):
@@ -39,6 +59,15 @@ class UI:
                 utm_campaign = st.text_input('Campaign Name', placeholder='summer_sale')
                 utm_content = st.text_input('Campaign Content', placeholder='blue_banner')
 
+            # QR Code Option
+            enable_qr = st.checkbox("Generate QR Code")
+            if enable_qr:
+                col1, col2 = st.columns(2)
+                with col1:
+                    qr_color = st.color_picker('QR Code Color', '#000000')
+                with col2:
+                    qr_bg_color = st.color_picker('Background Color', '#FFFFFF')
+
             # Advanced Options in expander
             with st.expander("⚙️ Advanced Options"):
                 custom_code = st.text_input(
@@ -46,12 +75,6 @@ class UI:
                     placeholder="e.g., summer-sale"
                 )
                 enable_tracking = st.checkbox("Enable Analytics", value=True)
-
-            # QR Code Option
-            enable_qr = st.checkbox("Generate QR Code")
-            if enable_qr:
-                qr_color = st.color_picker('QR Code Color', '#000000')
-                qr_bg_color = st.color_picker('Background Color', '#FFFFFF')
             
             submitted = st.form_submit_button("Create Short URL")
             
@@ -82,23 +105,6 @@ class UI:
         # Show recent links table
         self.render_recent_links()
         return None
-
-    def generate_qr_code(self, url: str, color: str = '#000000', bg_color: str = '#FFFFFF') -> Image:
-        """Generate a customized QR code"""
-        qr = qrcode.QRCode(
-            version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=10,
-            border=4,
-        )
-        qr.add_data(url)
-        qr.make(fit=True)
-
-        # Convert hex colors to RGB
-        fill_color = tuple(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-        back_color = tuple(int(bg_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-        
-        return qr.make_image(fill_color=fill_color, back_color=back_color)
 
     def render_analytics_dashboard(self, analytics_data: Dict[str, Any]):
         """Enhanced analytics dashboard with A/B testing results"""
@@ -525,17 +531,6 @@ class UI:
         else:
             st.info(f"No {title.lower()} data available") 
 
-    def generate_qr_code(self, url: str) -> str:
-        """Generate QR code for URL"""
-        qr = qrcode.QRCode(version=1, box_size=10, border=5)
-        qr.add_data(url)
-        qr.make(fit=True)
-        
-        img = qr.make_image(fill_color="black", back_color="white")
-        buffered = BytesIO()
-        img.save(buffered, format="PNG")
-        return buffered.getvalue() 
-
     def render_success_message(self, shortened_url: str):
         """Display success message and shortened URL"""
         st.success("🎉 URL shortened successfully!")
@@ -544,19 +539,21 @@ class UI:
         with col1:
             st.code(shortened_url, language=None)
         with col2:
-            st.button("📋 Copy", on_click=lambda: st.write(f"```{shortened_url}```"))
+            if st.button("📋 Copy"):
+                st.write("Copied to clipboard!")
+                st.code(shortened_url)
 
-    def render_qr_code_section(self, url: str, short_code: str):
+    def render_qr_code_section(self, url: str, short_code: str, color: str = '#000000', bg_color: str = '#FFFFFF'):
         """Display QR code section"""
         with st.expander("📱 QR Code", expanded=True):
-            qr_code = self.generate_qr_code(url)
+            qr_code = self.generate_qr_code(url, color, bg_color)
             st.image(qr_code, caption="Scan this QR code")
             st.download_button(
                 "⬇️ Download QR Code",
                 qr_code,
                 f"qr_code_{short_code}.png",
                 "image/png"
-            ) 
+            )
 
     def render_recent_links(self):
         """Display table of recent shortened links"""
