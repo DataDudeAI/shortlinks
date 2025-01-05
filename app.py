@@ -6,6 +6,7 @@ import string
 import random
 from urllib.parse import urlparse, parse_qs
 import logging
+from typing import Optional
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
