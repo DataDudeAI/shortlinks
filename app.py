@@ -162,23 +162,26 @@ def main():
         short_code = params['r']
         url_info = shortener.db.get_url_info(short_code)
         if url_info:
-            # Save analytics data
+            # Save basic analytics data
             analytics_data = {
                 'short_code': short_code,
-                'ip_address': st.request.headers.get('X-Forwarded-For', 'Unknown'),
-                'user_agent': st.request.headers.get('User-Agent', 'Unknown'),
-                'referrer': st.request.headers.get('Referer', None),
+                'ip_address': 'Unknown',
+                'user_agent': 'Unknown',
+                'referrer': None,
                 'utm_source': params.get('utm_source', 'direct'),
                 'utm_medium': params.get('utm_medium', 'none'),
                 'utm_campaign': params.get('utm_campaign', 'no campaign'),
                 'country': 'Unknown',
-                'device_type': 'desktop' if 'Mobile' not in st.request.headers.get('User-Agent', '') else 'mobile',
-                'browser': st.request.headers.get('User-Agent', 'Unknown').split('/')[0],
+                'device_type': 'unknown',
+                'browser': 'unknown',
                 'os': 'Unknown'
             }
             
             # Save the click
             shortener.db.save_analytics(analytics_data)
+            
+            # Increment click count
+            shortener.db.increment_clicks(short_code)
             
             # Redirect to original URL
             original_url = url_info['original_url']
