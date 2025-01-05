@@ -165,15 +165,15 @@ def main():
             # Save analytics data
             analytics_data = {
                 'short_code': short_code,
-                'ip_address': st.get_client_ip(),
-                'user_agent': st.get_user_agent(),
-                'referrer': st.get_referrer() if hasattr(st, 'get_referrer') else None,
+                'ip_address': st.request.headers.get('X-Forwarded-For', 'Unknown'),
+                'user_agent': st.request.headers.get('User-Agent', 'Unknown'),
+                'referrer': st.request.headers.get('Referer', None),
                 'utm_source': params.get('utm_source', 'direct'),
                 'utm_medium': params.get('utm_medium', 'none'),
                 'utm_campaign': params.get('utm_campaign', 'no campaign'),
-                'country': 'Unknown',  # You can add IP-based geolocation if needed
-                'device_type': 'desktop' if 'desktop' in st.get_user_agent().lower() else 'mobile',
-                'browser': st.get_user_agent().split('/')[0],
+                'country': 'Unknown',
+                'device_type': 'desktop' if 'Mobile' not in st.request.headers.get('User-Agent', '') else 'mobile',
+                'browser': st.request.headers.get('User-Agent', 'Unknown').split('/')[0],
                 'os': 'Unknown'
             }
             
