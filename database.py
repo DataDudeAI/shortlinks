@@ -502,3 +502,48 @@ class Database:
             return False
         finally:
             conn.close() 
+
+    def get_recent_links(self, limit: int = 3) -> List[Dict]:
+        """Get the most recent shortened URLs"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('''
+                SELECT * FROM urls 
+                ORDER BY created_at DESC 
+                LIMIT ?
+            ''', (limit,))
+            return c.fetchall()
+        finally:
+            conn.close()
+
+    def get_last_click_date(self, short_code: str) -> Optional[datetime]:
+        """Get the date of the last click for a URL"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('''
+                SELECT clicked_at 
+                FROM analytics 
+                WHERE short_code = ? 
+                ORDER BY clicked_at DESC 
+                LIMIT 1
+            ''', (short_code,))
+            result = c.fetchone()
+            return datetime.strptime(result['clicked_at'], '%Y-%m-%d %H:%M:%S') if result else None
+        finally:
+            conn.close()
+
+    def get_unique_clicks_count(self, short_code: str) -> int:
+        """Get count of unique clicks based on IP address"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('''
+                SELECT COUNT(DISTINCT ip_address) 
+                FROM analytics 
+                WHERE short_code = ?
+            ''', (short_code,))
+            return c.fetchone()[0]
+        finally:
+            conn.close() 
