@@ -151,7 +151,7 @@ class Database:
 
     # === Analytics Methods ===
 
-    def save_analytics(self, analytics_data: Dict[str, Any]):
+    def save_analytics(self, analytics_data: Dict[str, Any]) -> bool:
         """Save click analytics data"""
         conn = self.get_connection()
         c = conn.cursor()
@@ -159,23 +159,22 @@ class Database:
             # Insert analytics data
             c.execute('''
                 INSERT INTO analytics (
-                    short_code, clicked_at, utm_source, utm_medium, 
-                    utm_campaign, referrer, user_agent, ip_address,
+                    short_code, ip_address, user_agent, referrer,
+                    utm_source, utm_medium, utm_campaign,
                     country, device_type, browser, os
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 analytics_data['short_code'],
-                analytics_data.get('clicked_at', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
-                analytics_data.get('utm_source', 'direct'),
-                analytics_data.get('utm_medium', 'none'),
-                analytics_data.get('utm_campaign', 'no campaign'),
-                analytics_data.get('referrer', ''),
-                analytics_data.get('user_agent', ''),
-                analytics_data.get('ip_address', ''),
-                analytics_data.get('country', ''),
-                analytics_data.get('device_type', ''),
-                analytics_data.get('browser', ''),
-                analytics_data.get('os', '')
+                analytics_data['ip_address'],
+                analytics_data['user_agent'],
+                analytics_data['referrer'],
+                analytics_data['utm_source'],
+                analytics_data['utm_medium'],
+                analytics_data['utm_campaign'],
+                analytics_data['country'],
+                analytics_data['device_type'],
+                analytics_data['browser'],
+                analytics_data['os']
             ))
             
             # Update total clicks
@@ -186,6 +185,10 @@ class Database:
             ''', (analytics_data['short_code'],))
             
             conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error saving analytics: {str(e)}")
+            return False
         finally:
             conn.close()
 
