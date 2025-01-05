@@ -9,10 +9,10 @@ logger = logging.getLogger(__name__)
 class Database:
     """Database handler for URL shortener with analytics"""
     
-    def __init__(self, db_path: str = 'urls.db'):
-        # Ensure we're using an absolute path for Streamlit Cloud
-        self.db_path = os.path.abspath(db_path)
-        self.init_db()
+    def __init__(self):
+        """Initialize database connection and create tables if they don't exist"""
+        self.db_path = "urls.db"
+        self.create_tables()
 
     def get_connection(self):
         """Get database connection"""
@@ -20,88 +20,90 @@ class Database:
 
     # === Database Initialization ===
     
-    def init_db(self):
-        """Initialize database with success tracking"""
+    def create_tables(self):
+        """Create necessary database tables if they don't exist"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Create tables if they don't exist
-            c.execute('''
-                CREATE TABLE IF NOT EXISTS urls (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    original_url TEXT NOT NULL,
-                    short_code TEXT NOT NULL UNIQUE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    total_clicks INTEGER DEFAULT 0
-                )
-            ''')
+            # Check if enable_tracking column exists
+            c.execute("PRAGMA table_info(urls)")
+            columns = [column[1] for column in c.fetchall()]
             
-            # Drop existing analytics table to update schema
-            c.execute('DROP TABLE IF EXISTS analytics')
+            if 'urls' not in columns:
+                # Create URLs table if it doesn't exist
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS urls (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        original_url TEXT NOT NULL,
+                        short_code TEXT UNIQUE NOT NULL,
+                        created_at DATETIME NOT NULL,
+                        total_clicks INTEGER DEFAULT 0
+                    )
+                ''')
             
-            # Create new analytics table with all fields
+            # Add enable_tracking column if it doesn't exist
+            if 'enable_tracking' not in columns:
+                c.execute('ALTER TABLE urls ADD COLUMN enable_tracking BOOLEAN DEFAULT 1')
+
+            # Create analytics table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS analytics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     short_code TEXT NOT NULL,
-                    clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    utm_source TEXT DEFAULT 'direct',
-                    utm_medium TEXT DEFAULT 'none',
-                    utm_campaign TEXT DEFAULT 'no campaign',
-                    referrer TEXT,
-                    user_agent TEXT,
+                    clicked_at DATETIME NOT NULL,
                     ip_address TEXT,
-                    country TEXT,
-                    device_type TEXT,
-                    browser TEXT,
-                    os TEXT,
-                    successful BOOLEAN DEFAULT TRUE,
+                    user_agent TEXT,
+                    referrer TEXT,
                     FOREIGN KEY (short_code) REFERENCES urls (short_code)
                 )
             ''')
             
-            # Create indexes after table creation
-            c.execute('''CREATE INDEX IF NOT EXISTS idx_short_code ON urls (short_code)''')
-            c.execute('''CREATE INDEX IF NOT EXISTS idx_analytics_short_code ON analytics (short_code)''')
-            c.execute('''CREATE INDEX IF NOT EXISTS idx_clicked_at ON analytics (clicked_at)''')
-            c.execute('''CREATE INDEX IF NOT EXISTS idx_country ON analytics (country)''')
-            c.execute('''CREATE INDEX IF NOT EXISTS idx_device_type ON analytics (device_type)''')
-            c.execute('''CREATE INDEX IF NOT EXISTS idx_successful ON analytics (successful)''')
-            
             conn.commit()
         except Exception as e:
-            logger.error(f"Error initializing database: {str(e)}")
-            conn.rollback()
+            logger.error(f"Error creating tables: {str(e)}")
+            raise
         finally:
             conn.close()
 
     # === URL Management Methods ===
 
-    def save_url(self, data: Dict[str, Any]) -> Optional[str]:
-        """Save a new URL"""
+    def save_url(self, url: str, short_code: str, enable_tracking: bool = True) -> bool:
+        """Save a shortened URL to the database"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Validate required data
-            if not data.get('url') or not data.get('short_code'):
-                logger.error("Missing required URL data")
-                return None
-
-            # Insert the URL
-            c.execute('''
-                INSERT INTO urls (original_url, short_code, total_clicks)
-                VALUES (?, ?, 0)
-            ''', (data['url'], data['short_code']))
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Check if enable_tracking column exists
+            c.execute("PRAGMA table_info(urls)")
+            columns = [column[1] for column in c.fetchall()]
+            
+            if 'enable_tracking' in columns:
+                c.execute('''
+                    INSERT INTO urls (
+                        original_url,
+                        short_code,
+                        created_at,
+                        enable_tracking,
+                        total_clicks
+                    ) VALUES (?, ?, ?, ?, ?)
+                ''', (url, short_code, now, 1 if enable_tracking else 0, 0))
+            else:
+                # Fall back to old schema if column doesn't exist
+                c.execute('''
+                    INSERT INTO urls (
+                        original_url,
+                        short_code,
+                        created_at,
+                        total_clicks
+                    ) VALUES (?, ?, ?, ?)
+                ''', (url, short_code, now, 0))
             
             conn.commit()
-            logger.info(f"Successfully created short URL: {data['short_code']}")
-            return data['short_code']
-        except sqlite3.IntegrityError as e:
-            logger.error(f"URL creation failed - duplicate short code: {str(e)}")
-            return None
+            return True
         except Exception as e:
-            logger.error(f"URL creation failed: {str(e)}")
-            return None
+            logger.error(f"Error saving URL: {str(e)}")
+            return False
         finally:
             conn.close()
 
@@ -556,5 +558,28 @@ class Database:
             ''', (short_code,))
             result = c.fetchone()
             return result[0] if result else 0
+        finally:
+            conn.close() 
+
+    def track_click(self, short_code: str, ip_address: str = None, user_agent: str = None, referrer: str = None):
+        """Track click analytics"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            c.execute('''
+                INSERT INTO analytics (
+                    short_code,
+                    clicked_at,
+                    ip_address,
+                    user_agent,
+                    referrer
+                ) VALUES (?, ?, ?, ?, ?)
+            ''', (short_code, now, ip_address, user_agent, referrer))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error tracking click: {str(e)}")
+            return False
         finally:
             conn.close() 
