@@ -1,203 +1,140 @@
 def load_ui_styles():
     return """
     <style>
-        /* Main container and background */
-        .stApp {
-            background: linear-gradient(180deg, #0e1117 0%, #1a1a1a 100%);
+        /* Main theme colors and variables */
+        :root {
+            --primary: #00ff88;
+            --primary-dark: #00cc70;
+            --secondary: #1e88e5;
+            --background: #0e1117;
+            --surface: #1e1e1e;
+            --text: #ffffff;
+            --text-secondary: rgba(255,255,255,0.7);
+            --accent: rgba(0, 255, 136, 0.1);
         }
 
-        /* Neon accent effects */
-        .neon-accent {
-            text-shadow: 0 0 10px #00ff88, 0 0 20px #00ff88, 0 0 30px #00ff88;
-        }
-
-        /* Header styling */
-        h1, h2, h3 {
-            color: #00ff88;
-            font-weight: 600;
-            text-shadow: 0 0 10px rgba(0,255,136,0.3);
-        }
-
-        /* Metrics cards */
-        [data-testid="stMetric"] {
-            background: rgba(38, 39, 48, 0.8);
+        /* Card-like containers with modern styling */
+        [data-testid="stVerticalBlock"] > [style*="flex-direction: column;"] > [data-testid="stVerticalBlock"] {
+            background: linear-gradient(145deg, rgba(30,30,30,0.6) 0%, rgba(30,30,30,0.3) 100%);
+            border: 1px solid rgba(0, 255, 136, 0.1);
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            margin-bottom: 1rem;
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 4px 20px rgba(0, 255, 136, 0.1);
+            color: var(--text);
+        }
+
+        /* Container hover effect */
+        [data-testid="stVerticalBlock"]:hover {
+            border-color: rgba(0, 255, 136, 0.2);
+            transform: translateY(-2px);
             transition: all 0.3s ease;
         }
 
-        [data-testid="stMetric"]:hover {
-            transform: translateY(-5px);
-            border-color: #00ff88;
-            box-shadow: 0 8px 25px rgba(0, 255, 136, 0.2);
+        /* Campaign card styling */
+        .stMarkdown {
+            background: linear-gradient(145deg, rgba(30,30,30,0.6) 0%, rgba(30,30,30,0.3) 100%);
+            padding: 1.2rem;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 255, 136, 0.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+
+        /* Metrics styling */
+        [data-testid="stMetric"] {
+            background: linear-gradient(145deg, rgba(0,255,136,0.05) 0%, rgba(30,30,30,0.2) 100%);
+            padding: 1.2rem;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 255, 136, 0.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            color: var(--text);
         }
 
         [data-testid="stMetricValue"] {
-            color: #00ff88 !important;
-            font-size: 28px !important;
+            color: var(--primary) !important;
+            font-size: 1.8rem !important;
+            font-weight: 600 !important;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
         }
 
-        /* Form styling */
-        [data-testid="stForm"] {
-            background: rgba(38, 39, 48, 0.6);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        [data-testid="stMetricDelta"] {
+            color: var(--primary) !important;
+            font-size: 0.9rem !important;
+            background: rgba(0, 255, 136, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
         }
 
-        /* Input fields */
-        [data-testid="stTextInput"] input {
-            background: rgba(30, 30, 30, 0.6);
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 8px;
-            color: white;
-            padding: 12px 16px;
-            transition: all 0.2s ease;
+        [data-testid="stMetricLabel"] {
+            color: var(--text-secondary) !important;
+            font-size: 1rem !important;
+            font-weight: 500;
         }
 
-        [data-testid="stTextInput"] input:focus {
-            border-color: #00ff88;
-            box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2);
-            background: rgba(30, 30, 30, 0.8);
-        }
-
-        /* Buttons */
-        .stButton button {
-            background: linear-gradient(45deg, #00ff88, #00cc70) !important;
-            color: #0e1117 !important;
-            border: none !important;
-            border-radius: 8px;
-            padding: 12px 24px;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            text-shadow: none;
-            box-shadow: 0 4px 15px rgba(0, 255, 136, 0.2);
-        }
-
-        .stButton button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 255, 136, 0.3);
-            filter: brightness(1.1);
-        }
-
-        /* Table/DataFrame styling */
+        /* Dataframe/Table styling */
         [data-testid="stDataFrame"] {
-            background: rgba(38, 39, 48, 0.6);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(0, 255, 136, 0.1);
+            background: linear-gradient(145deg, rgba(30,30,30,0.6) 0%, rgba(30,30,30,0.3) 100%);
             border-radius: 12px;
-            overflow: hidden;
+            padding: 1rem;
+            border: 1px solid rgba(0, 255, 136, 0.1);
         }
 
         .dataframe {
-            border: none !important;
+            color: var(--text) !important;
         }
 
         .dataframe th {
             background: rgba(0, 255, 136, 0.1) !important;
-            color: #00ff88 !important;
-            font-weight: 600;
-            padding: 15px !important;
-            border-bottom: 1px solid rgba(0, 255, 136, 0.2) !important;
+            color: var(--primary) !important;
+            padding: 12px !important;
+            font-weight: 600 !important;
         }
 
         .dataframe td {
-            color: #ffffff;
-            padding: 12px 15px !important;
+            color: var(--text) !important;
+            padding: 12px !important;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
         }
 
-        /* Tabs styling */
-        .stTabs [data-baseweb="tab-list"] {
-            background: rgba(38, 39, 48, 0.6);
-            backdrop-filter: blur(10px);
-            border-radius: 10px;
-            padding: 5px;
-            gap: 5px;
-            border: 1px solid rgba(0, 255, 136, 0.1);
+        /* Form fields styling */
+        [data-testid="stTextInput"] input,
+        [data-testid="stNumberInput"] input,
+        .stTextArea textarea {
+            background: rgba(30,30,30,0.4) !important;
+            border: 1px solid rgba(0, 255, 136, 0.1) !important;
+            border-radius: 8px !important;
+            color: var(--text) !important;
+            padding: 12px !important;
         }
 
-        .stTabs [data-baseweb="tab"] {
-            background-color: transparent !important;
-            border-radius: 8px;
-            color: #ffffff;
-            transition: all 0.2s ease;
-            padding: 10px 20px;
-        }
-
-        .stTabs [data-baseweb="tab"][aria-selected="true"] {
-            background: rgba(0, 255, 136, 0.2) !important;
-            color: #00ff88;
-        }
-
-        /* Selectbox */
-        [data-testid="stSelectbox"] {
-            background: rgba(30, 30, 30, 0.6);
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 8px;
-            color: white;
-        }
-
-        /* Code blocks */
+        /* Code block styling */
         pre {
-            background: rgba(30, 30, 30, 0.6) !important;
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 8px;
-            color: #00ff88;
-            padding: 15px;
+            background: rgba(30,30,30,0.4) !important;
+            border: 1px solid rgba(0, 255, 136, 0.1) !important;
+            border-radius: 8px !important;
+            padding: 1rem !important;
+            color: var(--primary) !important;
         }
 
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: rgba(30, 30, 30, 0.6);
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: rgba(0, 255, 136, 0.2);
-            border-radius: 4px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: rgba(0, 255, 136, 0.4);
-        }
-
-        /* Success/Error messages */
-        .stSuccess {
-            background: rgba(0, 255, 136, 0.1);
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            color: #00ff88;
-            border-radius: 8px;
-        }
-
-        .stError {
-            background: rgba(255, 68, 68, 0.1);
-            border: 1px solid rgba(255, 68, 68, 0.2);
-            color: #ff4444;
-            border-radius: 8px;
-        }
-
-        /* UTM Parameters section */
-        [data-testid="stExpander"] {
-            background: rgba(38, 39, 48, 0.6);
-            border: 1px solid rgba(0, 255, 136, 0.1);
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
+        /* Expander styling */
         .streamlit-expanderHeader {
-            background: rgba(0, 255, 136, 0.1);
-            color: #00ff88;
-            padding: 15px;
+            background: linear-gradient(145deg, rgba(30,30,30,0.6) 0%, rgba(30,30,30,0.3) 100%);
+            border-radius: 8px;
+            color: var(--text) !important;
+            padding: 1rem;
+            border: 1px solid rgba(0, 255, 136, 0.1);
         }
+
+        .streamlit-expanderContent {
+            background: rgba(30,30,30,0.2);
+            border-radius: 0 0 8px 8px;
+            padding: 1rem;
+            color: var(--text);
+        }
+
+        /* Keep your existing styles for header-accent, section-header, etc... */
     </style>
     """ 
