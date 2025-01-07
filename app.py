@@ -694,35 +694,107 @@ def main():
 
         # Active Campaigns Table
         st.markdown("### Active Campaign URLs")
-        
-        # Filter and Search
-        col1, col2, col3 = st.columns([2,1,1])
-        with col1:
-            st.text_input("🔍 Search URLs", placeholder="Search by name, URL or tags...")
-        with col2:
-            st.multiselect("Campaign Type", ["Social", "Email", "Ads", "Blog"])
-        with col3:
-            st.selectbox("Sort by", ["Created Date ↓", "Clicks ↓", "Conversion Rate ↓"])
 
-        # Campaign URLs Table
-        for i in range(3):  # Example campaigns
-            with st.container():
-                col1, col2, col3, col4 = st.columns([3,2,2,1])
-                with col1:
-                    st.markdown(f"**Campaign {i+1}**")
-                    st.markdown("Original: `https://example.com/very-long-url...`")
-                    st.markdown("Short: `https://short.link/abc123`")
-                with col2:
-                    st.metric("Clicks", "1,234")
-                    st.metric("Conversions", "123")
-                with col3:
-                    st.metric("CTR", "4.5%")
-                    st.metric("ROI", "$123")
-                with col4:
-                    st.button("📊", key=f"stats_{i}")
-                    st.button("✏️", key=f"edit_{i}")
-                    st.button("📱", key=f"qr_{i}")
-                st.divider()
+        # Get all active campaigns
+        active_campaigns = shortener.db.get_all_urls()
+
+        if not active_campaigns:
+            st.info("No active campaigns yet. Create one above!")
+        else:
+            # Filter and Search
+            col1, col2, col3 = st.columns([2,1,1])
+            with col1:
+                search = st.text_input("🔍 Search URLs", placeholder="Search by name, URL or tags...")
+            with col2:
+                campaign_filter = st.multiselect("Campaign Type", list(CAMPAIGN_TYPES.keys()))
+            with col3:
+                sort_by = st.selectbox("Sort by", ["Newest", "Most Clicks", "Name"])
+
+            # Filter campaigns
+            if search:
+                active_campaigns = [c for c in active_campaigns if 
+                    search.lower() in c['original_url'].lower() or 
+                    (c.get('campaign_name', '').lower() and search.lower() in c['campaign_name'].lower())]
+            
+            # Sort campaigns
+            if sort_by == "Most Clicks":
+                active_campaigns.sort(key=lambda x: x['total_clicks'], reverse=True)
+            elif sort_by == "Name":
+                active_campaigns.sort(key=lambda x: x.get('campaign_name', x['short_code']).lower())
+            else:  # Newest
+                active_campaigns.sort(key=lambda x: x['created_at'], reverse=True)
+
+            # Display campaigns
+            for campaign in active_campaigns:
+                with st.container():
+                    col1, col2, col3, col4 = st.columns([3,2,2,1])
+                    with col1:
+                        campaign_name = campaign.get('campaign_name', campaign['short_code'])
+                        st.markdown(f"**{campaign_name}**")
+                        st.markdown(f"Original: `{campaign['original_url'][:50]}...`")
+                        shortened_url = f"{BASE_URL}?r={campaign['short_code']}"
+                        st.code(shortened_url)
+                    with col2:
+                        st.metric("Clicks", campaign['total_clicks'])
+                        unique_clicks = shortener.db.get_unique_clicks_count(campaign['short_code'])
+                        st.metric("Unique Visitors", unique_clicks)
+                    with col3:
+                        created_date = datetime.strptime(campaign['created_at'], '%Y-%m-%d %H:%M:%S')
+                        st.metric("Created", created_date.strftime('%Y-%m-%d'))
+                        last_click = shortener.db.get_last_click_date(campaign['short_code'])
+                        st.metric("Last Click", last_click.strftime('%Y-%m-%d') if last_click else "Never")
+                    with col4:
+                        # Action buttons
+                        if st.button("📊", key=f"stats_{campaign['short_code']}"):
+                            stats = shortener.db.get_campaign_stats(campaign['short_code'])
+                            st.json(stats)
+                        
+                        if st.button("✏️", key=f"edit_{campaign['short_code']}"):
+                            campaign_details = shortener.db.get_campaign_details(campaign['short_code'])
+                            if campaign_details:
+                                with st.form(key=f"edit_form_{campaign['short_code']}"):
+                                    st.subheader(f"Edit Campaign: {campaign_name}")
+                                    new_name = st.text_input("Campaign Name", value=campaign_details.get('campaign_name', ''))
+                                    new_type = st.selectbox("Campaign Type", 
+                                        list(CAMPAIGN_TYPES.keys()),
+                                        index=list(CAMPAIGN_TYPES.keys()).index(campaign_details.get('campaign_type', 'Other')))
+                                    
+                                    # UTM Parameters
+                                    st.markdown("### UTM Parameters")
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        new_source = st.text_input("Source", value=campaign_details.get('utm_source', ''))
+                                        new_medium = st.text_input("Medium", value=campaign_details.get('utm_medium', ''))
+                                    with col2:
+                                        new_campaign = st.text_input("Campaign", value=campaign_details.get('utm_campaign', ''))
+                                        new_content = st.text_input("Content", value=campaign_details.get('utm_content', ''))
+                                    
+                                    if st.form_submit_button("Update Campaign"):
+                                        update_data = {
+                                            'campaign_name': new_name,
+                                            'campaign_type': new_type,
+                                            'utm_source': new_source,
+                                            'utm_medium': new_medium,
+                                            'utm_campaign': new_campaign,
+                                            'utm_content': new_content
+                                        }
+                                        if shortener.db.update_campaign(campaign['short_code'], update_data):
+                                            st.success("Campaign updated successfully!")
+                                            st.rerun()
+                                        else:
+                                            st.error("Failed to update campaign")
+                        
+                        if st.button("🗑️", key=f"delete_{campaign['short_code']}"):
+                            if st.button("Confirm Delete", key=f"confirm_delete_{campaign['short_code']}"):
+                                if shortener.db.delete_campaign(campaign['short_code']):
+                                    st.success("Campaign deleted successfully!")
+                                    st.rerun()
+                        
+                        # Copy URL button
+                        if st.button("📋", key=f"copy_{campaign['short_code']}"):
+                            st.code(shortened_url)
+                            st.toast("URL copied to clipboard!")
+                    st.divider()
 
         if submitted:
             form_data = {
