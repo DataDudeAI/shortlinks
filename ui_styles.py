@@ -14,71 +14,33 @@ def load_ui_styles():
             --gradient-end: #10B981;
             --border-color: rgba(255, 255, 255, 0.1);
             --hover-color: rgba(16, 185, 129, 0.1);
-            
-            /* Gradient Colors */
-            --purple-gradient: linear-gradient(135deg, #4F46E5, #7C3AED);
-            --blue-gradient: linear-gradient(135deg, #2563EB, #3B82F6);
-            --green-gradient: linear-gradient(135deg, #059669, #10B981);
-            --pink-gradient: linear-gradient(135deg, #DB2777, #EC4899);
         }
 
-        /* Global Text Styles */
-        div[data-testid="stVerticalBlock"] {
-            color: var(--text-color) !important;
+        /* Force Light Text on Dark Background */
+        .stApp {
+            background-color: var(--background-color);
         }
 
-        p, span, label, div {
-            color: var(--text-color) !important;
-        }
-
-        /* Markdown Text */
-        .stMarkdown p, .stMarkdown span, .stMarkdown div {
-            color: var(--text-color) !important;
-            font-size: 0.95rem !important;
-            line-height: 1.6 !important;
-        }
-
-        /* Form Labels */
-        .stTextInput label, .stSelectbox label, .stTextArea label {
-            color: var(--text-color) !important;
-            font-size: 0.95rem !important;
-            font-weight: 500 !important;
-            margin-bottom: 0.3rem !important;
-        }
-
-        /* Input Fields */
-        .stTextInput input, .stSelectbox select, .stTextArea textarea {
-            color: var(--text-color) !important;
-            font-size: 0.95rem !important;
-            background: var(--secondary-background-color) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            border-radius: 0.5rem !important;
-            padding: 0.5rem 1rem !important;
-        }
-
-        /* Selectbox Text */
-        .stSelectbox > div > div {
+        /* All Text Elements */
+        .stApp, .stApp p, .stApp div, .stApp label, .stApp span {
             color: var(--text-color) !important;
         }
 
         /* Main Header */
         .main-header {
-            background: var(--purple-gradient);
-            padding: 0.1rem;
-            border-radius: 0.4rem;
-            margin: 0;
-            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #4F46E5, #7C3AED);
+            padding: 0.8rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
         }
 
         .main-header h1 {
             color: white !important;
-            font-size: 1.1rem !important;
+            font-size: 1.2rem !important;
             font-weight: 600 !important;
-            margin: 0 !important;
             text-align: center;
-            line-height: 1.8 !important;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin: 0 !important;
         }
 
         /* Section Headers */
@@ -86,110 +48,148 @@ def load_ui_styles():
             color: white !important;
             font-size: 1rem !important;
             font-weight: 600 !important;
-            margin: 1rem 0 0.75rem 0 !important;
-            padding: 0.4rem 0.8rem !important;
-            background: var(--blue-gradient);
-            border-radius: 0.4rem;
-            display: inline-block;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            padding: 0.5rem 1rem !important;
+            background: linear-gradient(135deg, #2563EB, #3B82F6);
+            border-radius: 0.5rem;
+            margin: 1rem 0 !important;
         }
 
-        /* Table Styles */
-        .stDataFrame {
-            color: var(--text-color) !important;
+        /* Cards */
+        .card {
+            background: var(--card-background);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-color);
+            margin-bottom: 1rem;
         }
 
-        .stDataFrame td {
-            color: var(--text-color) !important;
-            font-size: 0.9rem !important;
+        /* Metrics */
+        [data-testid="stMetric"] {
+            background: var(--card-background);
+            padding: 1rem !important;
+            border-radius: 0.5rem !important;
+            border: 1px solid var(--border-color);
         }
 
-        .stDataFrame th {
-            color: white !important;
-            font-size: 0.95rem !important;
-            font-weight: 600 !important;
-            background: var(--secondary-background-color) !important;
-        }
-
-        /* Metric Cards */
         [data-testid="stMetricLabel"] {
-            color: var(--secondary-text-color) !important;
+            color: var(--text-color) !important;
             font-size: 0.9rem !important;
-            font-weight: 500 !important;
         }
 
         [data-testid="stMetricValue"] {
-            color: white !important;
-            font-size: 1.8rem !important;
+            color: var(--accent-color) !important;
+            font-size: 1.5rem !important;
             font-weight: 600 !important;
-            background: var(--green-gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: none !important;
         }
 
         [data-testid="stMetricDelta"] {
             color: var(--accent-color) !important;
-            font-weight: 500 !important;
         }
 
-        /* Activity Items */
-        .activity-item {
+        /* Form Elements */
+        .stTextInput input, .stSelectbox select, .stTextArea textarea {
+            background: var(--secondary-background-color) !important;
             color: var(--text-color) !important;
-            font-size: 0.9rem !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 0.5rem !important;
+            padding: 0.5rem !important;
         }
 
-        .activity-item strong {
-            color: var(--accent-color) !important;
-            font-weight: 600 !important;
-        }
-
-        .activity-time {
-            color: var(--secondary-text-color) !important;
-            font-size: 0.8rem !important;
+        .stTextInput label, .stSelectbox label, .stTextArea label {
+            color: var(--text-color) !important;
+            font-weight: 500 !important;
         }
 
         /* Buttons */
         .stButton > button {
+            background: linear-gradient(135deg, #4F46E5, #7C3AED) !important;
             color: white !important;
-            font-size: 0.95rem !important;
+            border: none !important;
+            padding: 0.5rem 1rem !important;
+            border-radius: 0.5rem !important;
+        }
+
+        /* Tables */
+        .stDataFrame {
+            background: var(--card-background) !important;
+            border-radius: 0.5rem !important;
+            border: 1px solid var(--border-color) !important;
+        }
+
+        .stDataFrame th {
+            background: var(--secondary-background-color) !important;
+            color: var(--text-color) !important;
             font-weight: 600 !important;
-            background: var(--purple-gradient) !important;
         }
 
-        /* Expander */
-        .streamlit-expanderHeader {
-            color: var(--text-color) !important;
-            font-size: 0.95rem !important;
-            font-weight: 500 !important;
-        }
-
-        /* Radio Buttons */
-        .stRadio label {
+        .stDataFrame td {
             color: var(--text-color) !important;
         }
 
-        /* Checkbox */
-        .stCheckbox label {
+        /* Activity Items */
+        .activity-item {
+            background: var(--card-background);
+            padding: 0.8rem;
+            border-radius: 0.5rem;
+            margin: 0.5rem 0;
+            border: 1px solid var(--border-color);
+        }
+
+        .activity-item strong {
+            color: var(--accent-color) !important;
+        }
+
+        .activity-time {
+            color: var(--secondary-text-color) !important;
+            font-size: 0.8rem;
+        }
+
+        /* Charts */
+        [data-testid="stPlotlyChart"] {
+            background: var(--card-background) !important;
+            border-radius: 0.5rem !important;
+            border: 1px solid var(--border-color) !important;
+            padding: 1rem !important;
+        }
+
+        /* Sidebar */
+        section[data-testid="stSidebar"] {
+            background-color: var(--secondary-background-color);
+            border-right: 1px solid var(--border-color);
+        }
+
+        section[data-testid="stSidebar"] .stRadio label {
             color: var(--text-color) !important;
         }
 
         /* Tabs */
+        .stTabs [data-baseweb="tab-list"] {
+            background-color: var(--secondary-background-color);
+        }
+
         .stTabs [data-baseweb="tab"] {
             color: var(--text-color) !important;
         }
 
-        /* Sidebar */
-        .sidebar .sidebar-content {
+        /* Expander */
+        .streamlit-expanderHeader {
+            background-color: var(--secondary-background-color) !important;
             color: var(--text-color) !important;
         }
 
-        /* Placeholder Text */
-        ::placeholder {
-            color: var(--secondary-text-color) !important;
-            opacity: 0.7 !important;
+        /* Remove extra spacing */
+        .main .block-container {
+            padding-top: 1rem !important;
         }
 
-        /* Rest of your existing styles... */
+        /* Checkbox and Radio */
+        .stCheckbox label, .stRadio label {
+            color: var(--text-color) !important;
+        }
+
+        /* Selectbox */
+        .stSelectbox > div > div {
+            color: var(--text-color) !important;
+        }
     </style>
     """ 
