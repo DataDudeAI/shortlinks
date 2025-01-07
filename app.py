@@ -567,6 +567,53 @@ class URLShortener:
         else:
             st.info("No click data available for heatmap visualization")
 
+    def render_recent_links(self):
+        """Display the most recently created links"""
+        st.subheader("🕒 Recently Created Links")
+        
+        # Get recent links from database (last 5)
+        recent_links = self.db.get_recent_links(limit=5)
+        
+        if not recent_links:
+            st.info("No links created yet. Create your first campaign above!")
+            return
+        
+        # Create columns for the metrics overview
+        total_clicks = sum(link['total_clicks'] for link in recent_links)
+        unique_clicks = sum(self.db.get_unique_clicks_count(link['short_code']) for link in recent_links)
+        
+        metrics_col1, metrics_col2 = st.columns(2)
+        with metrics_col1:
+            st.metric("Total Clicks (Recent)", total_clicks)
+        with metrics_col2:
+            st.metric("Unique Visitors (Recent)", unique_clicks)
+        
+        # Display recent links in a modern table
+        df = pd.DataFrame([
+            {
+                'Campaign': link.get('campaign_name', link['short_code']),
+                'Short URL': f"{BASE_URL}?r={link['short_code']}",
+                'Created': datetime.strptime(link['created_at'], '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M'),
+                'Clicks': link['total_clicks'],
+                'Unique': self.db.get_unique_clicks_count(link['short_code']),
+                'Last Click': self.db.get_last_click_date(link['short_code']).strftime('%Y-%m-%d %H:%M') if self.db.get_last_click_date(link['short_code']) else "Never"
+            } for link in recent_links
+        ])
+        
+        st.dataframe(
+            df,
+            column_config={
+                "Campaign": st.column_config.TextColumn("Campaign", width="medium"),
+                "Short URL": st.column_config.LinkColumn("Short URL", width="medium"),
+                "Created": st.column_config.DatetimeColumn("Created", format="D MMM, HH:mm"),
+                "Clicks": st.column_config.NumberColumn("Clicks", format="%d"),
+                "Unique": st.column_config.NumberColumn("Unique Clicks", format="%d"),
+                "Last Click": st.column_config.DatetimeColumn("Last Activity", format="D MMM, HH:mm")
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+
 def main():
     # Initialize shortener
     shortener = URLShortener()
@@ -594,48 +641,56 @@ def main():
     tab1, tab2, tab3 = st.tabs(["🎯 Create & Manage", "📊 Analytics", "⚙️ Bulk Operations"])
 
     with tab1:
-        # URL Creation Form
-        with st.form("url_shortener_form", clear_on_submit=True):
-            st.subheader("Create Campaign URL")
-            
-            # Basic URL Input
-            url = st.text_input("Long URL", placeholder="https://example.com")
-            
-            # Campaign Details
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                campaign_name = st.text_input("Campaign Name", placeholder="summer_sale_2024")
-            with col2:
-                custom_code = st.text_input("Custom Short Code (optional)", placeholder="summer24")
-            with col3:
-                campaign_type = st.selectbox("Campaign Type", 
-                    ["Social Media", "Email", "Paid Ads", "Blog", "Affiliate"])
-
-            # UTM Parameters
-            st.markdown("### UTM Parameters")
-            utm_col1, utm_col2, utm_col3 = st.columns(3)
-            with utm_col1:
-                utm_source = st.text_input("Source", placeholder="facebook")
-                utm_medium = st.text_input("Medium", placeholder="social")
-            with utm_col2:
-                utm_campaign = st.text_input("Campaign", placeholder="summer_sale")
-                utm_content = st.text_input("Content", placeholder="banner_1")
-            with utm_col3:
-                utm_term = st.text_input("Term", placeholder="summer_fashion")
+        # Split the tab into two sections
+        create_col, recent_col = st.columns([2, 1])
+        
+        with create_col:
+            # URL Creation Form
+            with st.form("url_shortener_form", clear_on_submit=True):
+                st.subheader("Create Campaign URL")
                 
-            # Advanced Options in Expander
-            with st.expander("Advanced Options"):
-                adv_col1, adv_col2 = st.columns(2)
-                with adv_col1:
-                    st.checkbox("Generate QR Code")
-                    st.checkbox("Enable Link Retargeting")
-                    st.checkbox("Track Conversions")
-                with adv_col2:
-                    st.selectbox("Link Expiry", ["Never", "24 hours", "7 days", "30 days"])
-                    st.selectbox("Target Device", ["All", "Mobile Only", "Desktop Only"])
-                    st.selectbox("Geo Targeting", ["Global", "US Only", "Europe", "Asia"])
+                # Basic URL Input
+                url = st.text_input("Long URL", placeholder="https://example.com")
+                
+                # Campaign Details
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    campaign_name = st.text_input("Campaign Name", placeholder="summer_sale_2024")
+                with col2:
+                    custom_code = st.text_input("Custom Short Code (optional)", placeholder="summer24")
+                with col3:
+                    campaign_type = st.selectbox("Campaign Type", 
+                        ["Social Media", "Email", "Paid Ads", "Blog", "Affiliate"])
 
-            submitted = st.form_submit_button("Create Campaign URL", use_container_width=True)
+                # UTM Parameters
+                st.markdown("### UTM Parameters")
+                utm_col1, utm_col2, utm_col3 = st.columns(3)
+                with utm_col1:
+                    utm_source = st.text_input("Source", placeholder="facebook")
+                    utm_medium = st.text_input("Medium", placeholder="social")
+                with utm_col2:
+                    utm_campaign = st.text_input("Campaign", placeholder="summer_sale")
+                    utm_content = st.text_input("Content", placeholder="banner_1")
+                with utm_col3:
+                    utm_term = st.text_input("Term", placeholder="summer_fashion")
+                    
+                # Advanced Options in Expander
+                with st.expander("Advanced Options"):
+                    adv_col1, adv_col2 = st.columns(2)
+                    with adv_col1:
+                        st.checkbox("Generate QR Code")
+                        st.checkbox("Enable Link Retargeting")
+                        st.checkbox("Track Conversions")
+                    with adv_col2:
+                        st.selectbox("Link Expiry", ["Never", "24 hours", "7 days", "30 days"])
+                        st.selectbox("Target Device", ["All", "Mobile Only", "Desktop Only"])
+                        st.selectbox("Geo Targeting", ["Global", "US Only", "Europe", "Asia"])
+
+                submitted = st.form_submit_button("Create Campaign URL", use_container_width=True)
+        
+        with recent_col:
+            # Show recent links
+            shortener.render_recent_links()
 
         # Active Campaigns Table
         st.markdown("### Active Campaign URLs")
