@@ -138,13 +138,27 @@ class URLShortener:
             # Track click before redirect
             self.db.increment_clicks(short_code)
             
-            # Use JavaScript for immediate redirect
+            # Use JavaScript for immediate redirect with analytics parameters
             html = f"""
                 <html>
                 <head>
                     <title>Redirecting...</title>
                     <script>
-                        window.location.href = "{original_url}";
+                        // Capture basic analytics
+                        var analyticsData = {{
+                            userAgent: navigator.userAgent,
+                            language: navigator.language,
+                            platform: navigator.platform,
+                            screenSize: window.screen.width + 'x' + window.screen.height
+                        }};
+                        
+                        // Store analytics data in query params
+                        var url = new URL("{original_url}");
+                        url.searchParams.append('user_agent', analyticsData.userAgent);
+                        url.searchParams.append('ref', document.referrer);
+                        
+                        // Redirect with analytics data
+                        window.location.href = url.toString();
                     </script>
                     <meta http-equiv="refresh" content="0;url={original_url}">
                 </head>
@@ -529,17 +543,15 @@ class URLShortener:
 def capture_client_info():
     """Capture client information for analytics"""
     try:
-        # Get client IP
-        st.session_state['client_ip'] = st.experimental_get_query_params().get('client_ip', ['Unknown'])[0]
+        # Get client IP (in production, you'd get this from request headers)
+        st.session_state['client_ip'] = '127.0.0.1'  # Default for local testing
         
-        # Get user agent
-        user_agent = st.request.headers.get('User-Agent', 'Unknown')
+        # Get user agent from query params as fallback
+        params = st.query_params
+        user_agent = params.get('user_agent', 'Unknown')
         st.session_state['user_agent'] = user_agent
         
-        # Get referrer
-        st.session_state['referrer'] = st.request.headers.get('Referer', 'Direct')
-        
-        # Basic device detection
+        # Basic device/browser detection from user agent
         st.session_state['device_type'] = 'Mobile' if 'Mobile' in user_agent else 'Desktop'
         
         # Basic browser detection
@@ -550,6 +562,11 @@ def capture_client_info():
         os_list = ['Windows', 'Mac', 'Linux', 'Android', 'iOS']
         st.session_state['os'] = next((os for os in os_list if os in user_agent), 'Other')
         
+        # Set default values for other fields
+        st.session_state['referrer'] = params.get('ref', 'Direct')
+        st.session_state['country'] = params.get('country', 'Unknown')
+        st.session_state['city'] = params.get('city', 'Unknown')
+        
     except Exception as e:
         logger.error(f"Error capturing client info: {str(e)}")
 
@@ -559,9 +576,9 @@ def main():
     shortener = URLShortener()
 
     # Check for redirect parameter
-    params = st.experimental_get_query_params()
+    params = st.query_params
     if 'r' in params:
-        short_code = params['r'][0]
+        short_code = params['r']
         shortener.handle_redirect(short_code)
         return
 
