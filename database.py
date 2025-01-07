@@ -25,11 +25,7 @@ class Database:
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Drop existing tables to update schema
-            c.execute('DROP TABLE IF EXISTS urls')
-            c.execute('DROP TABLE IF EXISTS analytics')
-            
-            # Create URLs table with campaign management fields
+            # Create URLs table without dropping existing one
             c.execute('''
                 CREATE TABLE IF NOT EXISTS urls (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +49,7 @@ class Database:
                 )
             ''')
             
-            # Create enhanced analytics table
+            # Create analytics table without dropping existing one
             c.execute('''
                 CREATE TABLE IF NOT EXISTS analytics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,9 +72,9 @@ class Database:
             ''')
             
             conn.commit()
-            logger.info("Database tables created successfully")
+            logger.info("Database tables checked/created successfully")
         except Exception as e:
-            logger.error(f"Error creating tables: {str(e)}")
+            logger.error(f"Error checking/creating tables: {str(e)}")
             raise
         finally:
             conn.close()
@@ -637,6 +633,12 @@ class Database:
         try:
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
+            # Check if short_code already exists
+            c.execute('SELECT id FROM urls WHERE short_code = ?', (short_code,))
+            if c.fetchone():
+                logger.error(f"Short code already exists: {short_code}")
+                return False
+            
             # Insert URL with campaign details
             c.execute('''
                 INSERT INTO urls (
@@ -671,6 +673,7 @@ class Database:
             ))
             
             conn.commit()
+            logger.info(f"Successfully saved campaign URL: {short_code} -> {url}")
             return True
         except Exception as e:
             logger.error(f"Error saving campaign URL: {str(e)}")
