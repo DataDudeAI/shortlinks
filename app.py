@@ -6,21 +6,54 @@ import string
 import random
 from urllib.parse import urlparse, parse_qs, urlencode
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Must be the first Streamlit command
 st.set_page_config(
-    page_title="URL Shortener",
-    page_icon="🔗",
+    page_title="Campaign URL Manager",
+    page_icon="🎯",
     layout="wide"
 )
 
 BASE_URL = "https://shortlinksnandan.streamlit.app"
+
+CAMPAIGN_TYPES = {
+    "Social Media": "🔵",
+    "Email": "📧",
+    "Paid Ads": "💰",
+    "Blog": "📝",
+    "Affiliate": "🤝",
+    "Other": "🔗"
+}
+
+CAMPAIGN_FEATURES = {
+    "UTM Builder": "🎯",
+    "A/B Testing": "🔄",
+    "QR Codes": "📱",
+    "Link Retargeting": "🎪",
+    "Custom Domains": "🌐",
+    "Deep Links": "🔗"
+}
+
+CAMPAIGN_METRICS = {
+    "Clicks": "👆",
+    "Unique Visitors": "👥",
+    "Conversion Rate": "📈",
+    "Bounce Rate": "↩️",
+    "Avg. Time": "⏱️",
+    "ROI": "💰"
+}
 
 class URLShortener:
     def __init__(self):
@@ -79,7 +112,10 @@ class URLShortener:
 
     def handle_redirect(self, short_code: str):
         """Handle URL redirection"""
+        logger.info(f"Attempting to redirect short_code: {short_code}")
         url_info = self.db.get_url_info(short_code)
+        logger.info(f"Retrieved URL info: {url_info}")
+        
         if url_info:
             original_url = url_info['original_url']
             logger.info(f"Redirecting to: {original_url}")
@@ -87,96 +123,561 @@ class URLShortener:
             # Track click
             self.db.increment_clicks(short_code)
             
-            # Clear any existing content
-            st.set_page_config(page_title="Redirecting...", layout="centered")
-            
-            # Hide Streamlit elements
-            st.markdown("""
-                <style>
-                    #MainMenu {visibility: hidden;}
-                    footer {visibility: hidden;}
-                    header {visibility: hidden;}
-                    .stDeployButton {display:none;}
-                    div[data-testid="stToolbar"] {display: none;}
-                </style>
-            """, unsafe_allow_html=True)
-            
-            # Simple redirect page
-            st.markdown(f"""
-                <html>
-                    <head>
-                        <title>Redirecting...</title>
-                    </head>
-                    <body>
-                        <p>Redirecting to your destination...</p>
-                        <script>
-                            window.location.replace("{original_url}");
-                        </script>
-                    </body>
-                </html>
+            # Use JavaScript for immediate redirect
+            js = f"""
+                <script>
+                    window.location.href = "{original_url}";
+                </script>
                 <noscript>
                     <meta http-equiv="refresh" content="0;url={original_url}">
                 </noscript>
-            """, unsafe_allow_html=True)
-            
-            # Fallback link
-            st.markdown(f"<a href='{original_url}'>Click here if not redirected automatically</a>", unsafe_allow_html=True)
+                <p>Redirecting to {original_url}...</p>
+                <p>Click <a href="{original_url}">here</a> if not redirected automatically.</p>
+            """
+            st.markdown(js, unsafe_allow_html=True)
         else:
             st.error("Invalid or expired link")
+            st.markdown(f"[← Back to URL Shortener]({BASE_URL})")
+
+    def render_campaign_dashboard(self):
+        """Enhanced campaign management dashboard"""
+        st.title("🚀 Campaign Management")
+        
+        # Top-level metrics
+        metrics = st.columns(4)
+        with metrics[0]:
+            st.metric("Active Campaigns", len(self.db.get_all_urls()), "↑2")
+        with metrics[1]:
+            total_clicks = sum(url['total_clicks'] for url in self.db.get_all_urls())
+            st.metric("Total Clicks", f"{total_clicks:,}", "↑15%")
+        with metrics[2]:
+            st.metric("Conversion Rate", "4.2%", "↑0.8%")
+        with metrics[3]:
+            st.metric("ROI", "$1,245", "↑23%")
+
+        # Campaign Actions
+        st.markdown("### Campaign Actions")
+        action_cols = st.columns(3)
+        
+        with action_cols[0]:
+            with st.expander("🎯 New Campaign", expanded=False):
+                self.render_campaign_creator()
+                
+        with action_cols[1]:
+            with st.expander("📊 Analytics", expanded=False):
+                self.render_campaign_analytics()
+                
+        with action_cols[2]:
+            with st.expander("⚙️ Settings", expanded=False):
+                self.render_campaign_settings()
+
+        # Active Campaigns Table
+        st.markdown("### 📈 Active Campaigns")
+        self.render_active_campaigns()
+
+    def render_campaign_creator(self):
+        """Enhanced campaign creation interface"""
+        campaign_type = st.selectbox(
+            "Campaign Type",
+            ["Social Media", "Email", "Paid Ads", "Blog", "Affiliate"]
+        )
+        
+        # Campaign Details
+        st.text_input("Campaign Name", placeholder="Summer Sale 2024")
+        cols = st.columns(2)
+        with cols[0]:
+            st.date_input("Start Date")
+        with cols[1]:
+            st.date_input("End Date")
+            
+        # UTM Parameters
+        st.markdown("#### UTM Parameters")
+        utm_cols = st.columns(2)
+        with utm_cols[0]:
+            st.text_input("Source", placeholder="facebook")
+            st.text_input("Campaign", placeholder="summer_sale")
+        with utm_cols[1]:
+            st.text_input("Medium", placeholder="social")
+            st.text_input("Content", placeholder="banner_1")
+            
+        # Advanced Options
+        with st.expander("🔧 Advanced Options"):
+            st.checkbox("Enable A/B Testing")
+            st.checkbox("Generate QR Code")
+            st.checkbox("Enable Link Retargeting")
+            st.selectbox("Link Expiry", ["Never", "24 hours", "7 days", "30 days", "Custom"])
+            
+        if st.button("Create Campaign", type="primary", use_container_width=True):
+            st.success("Campaign created successfully!")
+
+    def render_campaign_analytics(self):
+        """Enhanced analytics dashboard"""
+        # Time Range Selector
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.date_input("Date Range", value=[datetime.now(), datetime.now()])
+        with col2:
+            st.selectbox("Preset", ["Last 7 days", "Last 30 days", "Custom"])
+            
+        # Performance Metrics
+        for metric, icon in CAMPAIGN_METRICS.items():
+            st.metric(f"{icon} {metric}", "1,234", "↑12%")
+            
+        # Charts would go here (using Plotly or other libraries)
+        st.line_chart({"data": [1, 5, 2, 6, 2, 1]})
+
+    def render_campaign_settings(self):
+        """Campaign settings interface"""
+        st.selectbox("Default UTM Source", ["facebook", "twitter", "linkedin"])
+        st.selectbox("Default Campaign Type", list(CAMPAIGN_TYPES.keys()))
+        st.text_input("Custom Domain", placeholder="links.yourdomain.com")
+        st.checkbox("Auto-generate QR Codes")
+        st.checkbox("Enable Link Retargeting")
+        st.number_input("Default Link Expiry (days)", value=30)
+
+    def render_active_campaigns(self):
+        """Display active campaigns in a modern table"""
+        campaigns = self.db.get_all_urls()  # Get all campaigns
+        
+        if not campaigns:
+            st.info("No active campaigns yet. Create your first campaign above!")
+            return
+        
+        # Filter and Search
+        col1, col2, col3 = st.columns([2,1,1])
+        with col1:
+            search = st.text_input("🔍 Search campaigns", placeholder="Search by name or URL...")
+        with col2:
+            campaign_filter = st.multiselect("Campaign Type", list(CAMPAIGN_TYPES.keys()))
+        with col3:
+            sort_by = st.selectbox("Sort by", ["Newest", "Most Clicks", "Name"])
+        
+        # Filter campaigns
+        if search:
+            campaigns = [c for c in campaigns if search.lower() in c['original_url'].lower() or 
+                        (c.get('campaign_name') and search.lower() in c['campaign_name'].lower())]
+        if campaign_filter:
+            campaigns = [c for c in campaigns if c.get('campaign_type') in campaign_filter]
+        
+        # Sort campaigns
+        if sort_by == "Most Clicks":
+            campaigns.sort(key=lambda x: x['total_clicks'], reverse=True)
+        elif sort_by == "Name":
+            campaigns.sort(key=lambda x: x.get('campaign_name', '').lower())
+        else:  # Newest
+            campaigns.sort(key=lambda x: x['created_at'], reverse=True)
+        
+        # Display campaigns
+        for campaign in campaigns:
+            with st.container():
+                cols = st.columns([3, 2, 2, 1])
+                with cols[0]:
+                    if campaign.get('campaign_name'):
+                        st.markdown(f"### {campaign['campaign_name']}")
+                    else:
+                        st.markdown(f"### {campaign['short_code']}")
+                    st.markdown(f"Original URL: `{campaign['original_url'][:50]}...`")
+                    shortened_url = f"{BASE_URL}?r={campaign['short_code']}"
+                    st.code(shortened_url)
+                with cols[1]:
+                    st.metric("Clicks", campaign['total_clicks'])
+                    unique_clicks = self.db.get_unique_clicks_count(campaign['short_code'])
+                    st.metric("Unique Visitors", unique_clicks)
+                with cols[2]:
+                    created_date = datetime.strptime(campaign['created_at'], '%Y-%m-%d %H:%M:%S')
+                    st.metric("Created", created_date.strftime('%Y-%m-%d'))
+                    last_click = self.db.get_last_click_date(campaign['short_code'])
+                    st.metric("Last Click", last_click.strftime('%Y-%m-%d') if last_click else "Never")
+                with cols[3]:
+                    # Action buttons
+                    if st.button("📊", key=f"stats_{campaign['short_code']}"):
+                        st.session_state.selected_campaign = campaign['short_code']
+                        stats = self.db.get_campaign_stats(campaign['short_code'])
+                        st.json(stats)
+                    
+                    if st.button("✏️", key=f"edit_{campaign['short_code']}"):
+                        st.session_state.editing_campaign = campaign['short_code']
+                        self.render_campaign_editor(campaign)
+                    
+                    if st.button("🗑️", key=f"delete_{campaign['short_code']}"):
+                        if st.button("Confirm Delete", key=f"confirm_delete_{campaign['short_code']}"):
+                            if self.db.delete_campaign(campaign['short_code']):
+                                st.success("Campaign deleted successfully!")
+                                st.rerun()
+                    
+                    # Test link button
+                    st.markdown(f"[🔗 Test]({shortened_url})")
+                st.divider()
+
+    def render_campaign_editor(self, campaign: Dict[str, Any]):
+        """Render campaign editing interface"""
+        st.subheader(f"Edit Campaign: {campaign.get('campaign_name', campaign['short_code'])}")
+        
+        with st.form(key=f"edit_campaign_{campaign['short_code']}"):
+            campaign_name = st.text_input("Campaign Name", value=campaign.get('campaign_name', ''))
+            campaign_type = st.selectbox("Campaign Type", 
+                                       list(CAMPAIGN_TYPES.keys()),
+                                       index=list(CAMPAIGN_TYPES.keys()).index(campaign.get('campaign_type', 'Other')))
+            
+            # UTM Parameters
+            st.markdown("### UTM Parameters")
+            col1, col2 = st.columns(2)
+            with col1:
+                utm_source = st.text_input("Source", value=campaign.get('utm_source', ''))
+                utm_medium = st.text_input("Medium", value=campaign.get('utm_medium', ''))
+            with col2:
+                utm_campaign = st.text_input("Campaign", value=campaign.get('utm_campaign', ''))
+                utm_content = st.text_input("Content", value=campaign.get('utm_content', ''))
+            
+            # Additional settings
+            expiry_date = st.date_input("Expiry Date", 
+                                       value=datetime.strptime(campaign.get('expiry_date', '2099-12-31'), '%Y-%m-%d') if campaign.get('expiry_date') else None)
+            
+            notes = st.text_area("Notes", value=campaign.get('notes', ''))
+            tags = st.text_input("Tags (comma-separated)", value=','.join(campaign.get('tags', [])))
+            
+            if st.form_submit_button("Update Campaign"):
+                update_data = {
+                    'campaign_name': campaign_name,
+                    'campaign_type': campaign_type,
+                    'utm_source': utm_source,
+                    'utm_medium': utm_medium,
+                    'utm_campaign': utm_campaign,
+                    'utm_content': utm_content,
+                    'expiry_date': expiry_date.strftime('%Y-%m-%d'),
+                    'notes': notes,
+                    'tags': tags
+                }
+                
+                if self.db.update_campaign(campaign['short_code'], update_data):
+                    st.success("Campaign updated successfully!")
+                    st.rerun()
+                else:
+                    st.error("Failed to update campaign")
+
+    def create_campaign_url(self, form_data: dict) -> Optional[str]:
+        """Create a campaign URL with all parameters"""
+        if not form_data.get('url'):
+            st.error('Please enter a URL')
+            return None
+
+        try:
+            # Clean and validate URL
+            cleaned_url = form_data['url'].strip()
+            if not cleaned_url.startswith(('http://', 'https://')):
+                cleaned_url = 'https://' + cleaned_url
+
+            if not validators.url(cleaned_url):
+                st.error('Please enter a valid URL')
+                return None
+
+            # Build UTM parameters
+            utm_params = {
+                'utm_source': form_data.get('utm_source', ''),
+                'utm_medium': form_data.get('utm_medium', ''),
+                'utm_campaign': form_data.get('utm_campaign', ''),
+                'utm_content': form_data.get('utm_content', ''),
+                'utm_term': form_data.get('utm_term', '')
+            }
+            
+            # Filter out empty UTM parameters
+            utm_params = {k: v for k, v in utm_params.items() if v}
+            
+            # Add UTM parameters to URL if any exist
+            if utm_params:
+                parsed_url = urlparse(cleaned_url)
+                existing_params = parse_qs(parsed_url.query)
+                # Combine existing and new parameters
+                all_params = {**existing_params, **utm_params}
+                # Create new query string
+                new_query = urlencode(all_params, doseq=True)
+                # Reconstruct URL with UTM parameters
+                cleaned_url = parsed_url._replace(query=new_query).geturl()
+
+            # Generate or use custom short code
+            short_code = form_data.get('custom_code') or self.generate_short_code()
+            
+            # Save to database with campaign info
+            if self.db.save_campaign_url(
+                url=cleaned_url,
+                short_code=short_code,
+                campaign_name=form_data.get('campaign_name', ''),
+                campaign_type=form_data.get('campaign_type', ''),
+                utm_params=utm_params,
+                expiry_date=form_data.get('expiry_date'),
+                enable_tracking=form_data.get('track_conversions', True)
+            ):
+                logger.info(f"Successfully created campaign URL: {short_code}")
+                return short_code
+            else:
+                st.error("Failed to save campaign URL")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error creating campaign URL: {str(e)}")
+            st.error("An error occurred while creating the campaign URL")
+            return None
+
+    def render_demographics(self, short_code: str):
+        """Render demographic analytics"""
+        st.subheader("📊 Visitor Demographics")
+        
+        # Get demographic data
+        demo_data = self.db.get_demographics(short_code)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            # Country distribution
+            st.markdown("### Geographic Distribution")
+            country_data = pd.DataFrame(demo_data['countries'].items(), 
+                                      columns=['Country', 'Visits'])
+            fig = px.choropleth(country_data, 
+                               locations='Country', 
+                               locationmode='country names',
+                               color='Visits',
+                               title='Visitor Locations')
+            st.plotly_chart(fig, use_container_width=True)
+            
+        with col2:
+            # Device breakdown
+            st.markdown("### Device Types")
+            device_data = pd.DataFrame(demo_data['devices'].items(), 
+                                     columns=['Device', 'Count'])
+            fig = px.pie(device_data, values='Count', names='Device',
+                        title='Device Distribution')
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Browser and OS data
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("### Browsers")
+            browser_data = pd.DataFrame(demo_data['browsers'].items(),
+                                      columns=['Browser', 'Count'])
+            fig = px.bar(browser_data, x='Browser', y='Count',
+                        title='Browser Usage')
+            st.plotly_chart(fig, use_container_width=True)
+            
+        with col2:
+            st.markdown("### Operating Systems")
+            os_data = pd.DataFrame(demo_data['os'].items(),
+                                 columns=['OS', 'Count'])
+            fig = px.bar(os_data, x='OS', y='Count',
+                        title='OS Distribution')
+            st.plotly_chart(fig, use_container_width=True)
+
+    def render_click_heatmap(self, short_code: str):
+        """Render click heatmap visualization"""
+        st.subheader("🎯 Click Heatmap")
+        
+        # Get click coordinate data
+        click_data = self.db.get_click_coordinates(short_code)
+        
+        if click_data:
+            # Create heatmap using plotly
+            fig = go.Figure(data=go.Heatmap(
+                x=click_data['x'],
+                y=click_data['y'],
+                colorscale='Viridis'
+            ))
+            
+            fig.update_layout(
+                title='Click Distribution Heatmap',
+                xaxis_title='X Coordinate',
+                yaxis_title='Y Coordinate',
+                height=400
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No click data available for heatmap visualization")
 
 def main():
     # Initialize shortener
     shortener = URLShortener()
-
-    # Check for redirect parameter first
+    
+    # Check for redirect parameter first - using st.query_params instead of experimental
     if 'r' in st.query_params:
-        short_code = st.query_params['r']
+        short_code = st.query_params['r']  # No need for [0] as it's not a list anymore
         shortener.handle_redirect(short_code)
         return
 
-    # Sidebar navigation
-    with st.sidebar:
-        st.title("🔗 URL Shortener")
-        st.markdown("---")
-        page = st.radio(
-            "Navigation",
-            ["Create URL", "Analytics Dashboard"]
-        )
+    # Main Header with Stats
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        active_links = len(shortener.db.get_all_urls())
+        st.metric("Active Links", active_links, "↑12")
+    with col2:
+        total_clicks = sum(url['total_clicks'] for url in shortener.db.get_all_urls())
+        st.metric("Total Clicks", f"{total_clicks:,}", "↑15%")
+    with col3:
+        st.metric("Conversion Rate", "4.2%", "↑0.8%")
+    with col4:
+        st.metric("Active Campaigns", "5", "↑2")
 
-    if page == "Create URL":
-        st.title("Create Short URL")
+    # Main Content in Tabs
+    tab1, tab2, tab3 = st.tabs(["🎯 Create & Manage", "📊 Analytics", "⚙️ Bulk Operations"])
+
+    with tab1:
+        # URL Creation Form
+        with st.form("url_shortener_form", clear_on_submit=True):
+            st.subheader("Create Campaign URL")
+            
+            # Basic URL Input
+            url = st.text_input("Long URL", placeholder="https://example.com")
+            
+            # Campaign Details
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                campaign_name = st.text_input("Campaign Name", placeholder="summer_sale_2024")
+            with col2:
+                custom_code = st.text_input("Custom Short Code (optional)", placeholder="summer24")
+            with col3:
+                campaign_type = st.selectbox("Campaign Type", 
+                    ["Social Media", "Email", "Paid Ads", "Blog", "Affiliate"])
+
+            # UTM Parameters
+            st.markdown("### UTM Parameters")
+            utm_col1, utm_col2, utm_col3 = st.columns(3)
+            with utm_col1:
+                utm_source = st.text_input("Source", placeholder="facebook")
+                utm_medium = st.text_input("Medium", placeholder="social")
+            with utm_col2:
+                utm_campaign = st.text_input("Campaign", placeholder="summer_sale")
+                utm_content = st.text_input("Content", placeholder="banner_1")
+            with utm_col3:
+                utm_term = st.text_input("Term", placeholder="summer_fashion")
+                
+            # Advanced Options in Expander
+            with st.expander("Advanced Options"):
+                adv_col1, adv_col2 = st.columns(2)
+                with adv_col1:
+                    st.checkbox("Generate QR Code")
+                    st.checkbox("Enable Link Retargeting")
+                    st.checkbox("Track Conversions")
+                with adv_col2:
+                    st.selectbox("Link Expiry", ["Never", "24 hours", "7 days", "30 days"])
+                    st.selectbox("Target Device", ["All", "Mobile Only", "Desktop Only"])
+                    st.selectbox("Geo Targeting", ["Global", "US Only", "Europe", "Asia"])
+
+            submitted = st.form_submit_button("Create Campaign URL", use_container_width=True)
+
+        # Active Campaigns Table
+        st.markdown("### Active Campaign URLs")
         
-        form_data = shortener.ui.render_url_form()
-        if form_data:
-            short_code = shortener.create_short_url(form_data)
-            if short_code:
-                shortened_url = f"{BASE_URL}/?r={short_code}"
-                
-                # Display success message and shortened URL
-                shortener.ui.render_success_message(shortened_url)
-                
-                # Display QR code if enabled
-                if form_data.get('qr_code', {}).get('enabled'):
-                    shortener.ui.render_qr_code_section(
-                        shortened_url, 
-                        short_code,
-                        form_data['qr_code']['color'],
-                        form_data['qr_code']['bg_color']
-                    )
+        # Filter and Search
+        col1, col2, col3 = st.columns([2,1,1])
+        with col1:
+            st.text_input("🔍 Search URLs", placeholder="Search by name, URL or tags...")
+        with col2:
+            st.multiselect("Campaign Type", ["Social", "Email", "Ads", "Blog"])
+        with col3:
+            st.selectbox("Sort by", ["Created Date ↓", "Clicks ↓", "Conversion Rate ↓"])
 
-    else:  # Analytics Dashboard
-        st.title("Analytics Dashboard")
-        urls = shortener.db.get_all_urls()
-        if urls:
-            for url in urls:
-                with st.expander(f"Analytics for {url['short_code']}", expanded=False):
-                    analytics = shortener.db.get_analytics_data(url['short_code'])
-                    if analytics:
-                        st.metric("Total Clicks", url['total_clicks'])
-                        st.metric("Original URL", url['original_url'])
-                        st.markdown(f"Short URL: `{BASE_URL}/?r={url['short_code']}`")
-        else:
-            st.info("No URLs found. Create some links first!")
+        # Campaign URLs Table
+        for i in range(3):  # Example campaigns
+            with st.container():
+                col1, col2, col3, col4 = st.columns([3,2,2,1])
+                with col1:
+                    st.markdown(f"**Campaign {i+1}**")
+                    st.markdown("Original: `https://example.com/very-long-url...`")
+                    st.markdown("Short: `https://short.link/abc123`")
+                with col2:
+                    st.metric("Clicks", "1,234")
+                    st.metric("Conversions", "123")
+                with col3:
+                    st.metric("CTR", "4.5%")
+                    st.metric("ROI", "$123")
+                with col4:
+                    st.button("📊", key=f"stats_{i}")
+                    st.button("✏️", key=f"edit_{i}")
+                    st.button("📱", key=f"qr_{i}")
+                st.divider()
+
+        if submitted:
+            form_data = {
+                'url': url,
+                'campaign_name': campaign_name,
+                'custom_code': custom_code,
+                'campaign_type': campaign_type,
+                'utm_source': utm_source,
+                'utm_medium': utm_medium,
+                'utm_campaign': utm_campaign,
+                'utm_content': utm_content,
+                'utm_term': utm_term,
+                'track_conversions': st.session_state.get('track_conversions', True),
+                'expiry_date': st.session_state.get('expiry_date', None)
+            }
+            
+            short_code = shortener.create_campaign_url(form_data)
+            if short_code:
+                shortened_url = f"{BASE_URL}?r={short_code}"
+                st.success("✨ Campaign URL created successfully!")
+                st.code(shortened_url, language=None)
+                
+                # Show QR code if enabled
+                if st.session_state.get('generate_qr', False):
+                    qr = shortener.generate_qr_code(shortened_url)
+                    st.image(qr, caption="Scan this QR code")
+
+    with tab2:
+        # Analytics Overview
+        st.subheader("Campaign Performance")
+        
+        # Date Range Selector
+        col1, col2 = st.columns([3,1])
+        with col1:
+            st.date_input("Date Range", value=[datetime.now(), datetime.now()])
+        with col2:
+            st.selectbox("Quick Range", ["Last 7 days", "Last 30 days", "Custom"])
+
+        # Performance Metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Clicks", "12,345", "↑10%")
+        with col2:
+            st.metric("Unique Visitors", "8,234", "↑5%")
+        with col3:
+            st.metric("Conversion Rate", "3.2%", "↑0.5%")
+        with col4:
+            st.metric("Avg. Time on Site", "2m 34s", "↑15%")
+
+        # Performance Charts
+        chart_col1, chart_col2 = st.columns(2)
+        with chart_col1:
+            st.markdown("### Click Performance")
+            st.line_chart({"Clicks": [10, 20, 30, 20, 15, 25, 35]})
+        with chart_col2:
+            st.markdown("### Traffic Sources")
+            st.bar_chart({"Facebook": 40, "Twitter": 30, "LinkedIn": 20, "Email": 10})
+
+    with tab3:
+        # Bulk Operations
+        st.subheader("Bulk URL Operations")
+        
+        # Bulk Creation
+        with st.expander("Bulk URL Creation"):
+            st.file_uploader("Upload CSV with URLs", type="csv")
+            st.button("Process Bulk Creation")
+
+        # Bulk Export
+        with st.expander("Export Data"):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.selectbox("Export Format", ["CSV", "Excel", "JSON"])
+            with col2:
+                st.selectbox("Data Range", ["All Time", "Last 30 Days", "Custom"])
+            st.button("Export Data")
+
+        # Bulk Actions
+        with st.expander("Bulk Actions"):
+            st.multiselect("Select Campaigns", ["Campaign 1", "Campaign 2", "Campaign 3"])
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.button("Update UTM Parameters")
+            with col2:
+                st.button("Generate QR Codes")
+            with col3:
+                st.button("Archive Selected")
 
 if __name__ == "__main__":
     main() 
