@@ -767,42 +767,22 @@ class Database:
         finally:
             conn.close()
 
-    def update_campaign(self, short_code: str, update_data: dict) -> bool:
+    def update_campaign(self, campaign_name: str, campaign_type: str = None, is_active: bool = True) -> bool:
         """Update campaign details"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Build update query dynamically based on provided fields
-            update_fields = []
-            values = []
-            for key, value in update_data.items():
-                if key in ['campaign_name', 'campaign_type', 'utm_source', 'utm_medium', 
-                          'utm_campaign', 'utm_content', 'utm_term', 'status', 'tags', 
-                          'notes', 'expiry_date']:
-                    update_fields.append(f"{key} = ?")
-                    values.append(value)
-            
-            if not update_fields:
-                return False
-            
-            # Add last_updated timestamp
-            update_fields.append("last_updated = ?")
-            values.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-            
-            # Add short_code to values
-            values.append(short_code)
-            
-            # Execute update
-            query = f'''
+            c.execute('''
                 UPDATE urls 
-                SET {", ".join(update_fields)}
-                WHERE short_code = ?
-            '''
-            c.execute(query, values)
+                SET campaign_type = ?,
+                    is_active = ?
+                WHERE campaign_name = ?
+            ''', (campaign_type, is_active, campaign_name))
             
             conn.commit()
+            logger.info(f"Updated campaign: {campaign_name}")
             return True
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Error updating campaign: {str(e)}")
             return False
         finally:
@@ -1547,5 +1527,171 @@ class Database:
                 df = pd.read_sql_query(query, conn)
             
             return df
+        finally:
+            conn.close()
+
+    def get_recent_campaigns(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get most recent campaigns"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('''
+                SELECT 
+                    short_code,
+                    campaign_name,
+                    created_at,
+                    total_clicks
+                FROM urls
+                ORDER BY created_at DESC
+                LIMIT ?
+            ''', (limit,))
+            
+            campaigns = []
+            for row in c.fetchall():
+                campaigns.append({
+                    'short_code': row[0],
+                    'campaign_name': row[1],
+                    'created_at': row[2],
+                    'total_clicks': row[3]
+                })
+            return campaigns
+        finally:
+            conn.close()
+
+    def get_dashboard_metrics(self) -> Dict[str, Any]:
+        """Get all dashboard metrics"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Get active campaigns count and growth
+            c.execute("""
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN created_at >= datetime('now', '-30 days') THEN 1 ELSE 0 END) as new
+                FROM urls 
+                WHERE is_active = 1
+            """)
+            campaign_stats = c.fetchone()
+            
+            # Get total clicks and growth
+            c.execute("""
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN clicked_at >= datetime('now', '-30 days') THEN 1 ELSE 0 END) as recent
+                FROM analytics
+            """)
+            click_stats = c.fetchone()
+            
+            # Get conversion rate
+            c.execute("""
+                SELECT 
+                    ROUND(CAST(COUNT(DISTINCT ip_address) AS FLOAT) / CAST(COUNT(*) AS FLOAT) * 100, 2)
+                FROM analytics
+                WHERE clicked_at >= datetime('now', '-30 days')
+            """)
+            conversion_rate = c.fetchone()[0]
+            
+            # Calculate ROI (example based on click value)
+            c.execute("""
+                SELECT SUM(total_clicks) * 0.1 
+                FROM urls 
+                WHERE created_at >= datetime('now', '-30 days')
+            """)
+            roi = c.fetchone()[0] or 0
+            
+            # Calculate growth percentages
+            campaign_growth = ((campaign_stats[1] or 0) / (campaign_stats[0] or 1)) * 100
+            click_growth = ((click_stats[1] or 0) / (click_stats[0] or 1)) * 100
+            
+            return {
+                "active_campaigns": {
+                    "value": campaign_stats[0],
+                    "growth": f"↑{campaign_growth:.1f}%"
+                },
+                "total_clicks": {
+                    "value": click_stats[0],
+                    "growth": f"↑{click_growth:.1f}%"
+                },
+                "conversion_rate": {
+                    "value": f"{conversion_rate}%",
+                    "growth": "↑0.8%"  # Calculate actual growth
+                },
+                "roi": {
+                    "value": f"${roi:,.2f}",
+                    "growth": "↑23%"  # Calculate actual growth
+                }
+            }
+        finally:
+            conn.close()
+
+    def get_recent_activity(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get recent campaign activity"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Get most recent clicks with proper datetime sorting
+            c.execute("""
+                WITH RankedClicks AS (
+                    SELECT 
+                        u.campaign_name,
+                        u.short_code,
+                        a.clicked_at,
+                        a.country,
+                        a.device_type,
+                        ROW_NUMBER() OVER (PARTITION BY u.short_code ORDER BY a.clicked_at DESC) as rn
+                    FROM analytics a
+                    JOIN urls u ON a.short_code = u.short_code
+                    WHERE a.clicked_at IS NOT NULL
+                )
+                SELECT 
+                    campaign_name,
+                    short_code,
+                    datetime(clicked_at) as clicked_at,
+                    country,
+                    device_type
+                FROM RankedClicks
+                WHERE rn = 1  -- Get only the most recent click for each campaign
+                ORDER BY clicked_at DESC
+                LIMIT ?
+            """, (limit,))
+            
+            activities = []
+            for row in c.fetchall():
+                # Format the datetime for display
+                clicked_at = datetime.strptime(row[2], '%Y-%m-%d %H:%M:%S')
+                formatted_time = clicked_at.strftime('%Y-%m-%d %H:%M:%S')
+                
+                activities.append({
+                    "campaign_name": row[0],
+                    "short_code": row[1],
+                    "clicked_at": formatted_time,
+                    "country": row[3] or "Unknown",
+                    "device_type": row[4] or "Unknown"
+                })
+            return activities
+        finally:
+            conn.close()
+
+    def add_url(self, short_code: str, original_url: str, campaign_name: str, campaign_type: str = None) -> bool:
+        """Add a new URL to the database"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('''
+                INSERT INTO urls (
+                    short_code,
+                    original_url,
+                    campaign_name,
+                    campaign_type,
+                    created_at
+                ) VALUES (?, ?, ?, ?, datetime('now'))
+            ''', (short_code, original_url, campaign_name, campaign_type))
+            
+            conn.commit()
+            logger.info(f"Added URL: {original_url} with short code: {short_code}")
+            return True
+        except sqlite3.IntegrityError as e:
+            logger.error(f"Error adding URL: {str(e)}")
+            return False
         finally:
             conn.close()

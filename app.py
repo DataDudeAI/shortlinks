@@ -14,6 +14,11 @@ import plotly.graph_objects as go
 import json
 from ui_styles import load_ui_styles
 from organization import Organization
+from streamlit.components.v1 import html
+from streamlit.runtime.scriptrunner import add_script_run_ctx
+import qrcode
+from io import BytesIO
+from PIL import Image
 
 # Setup logging
 logging.basicConfig(
@@ -103,47 +108,47 @@ class URLShortener:
             if not self.db.get_url_info(code):
                 return code
 
-    def create_short_url(self, url_data: dict) -> Optional[str]:
-        """Create a shortened URL with optional UTM parameters"""
-        if not url_data.get('url'):
-            st.error('Please enter a URL')
-            return None
-
+    def create_short_url(self, url: str, campaign_name: str, campaign_type: str = None, utm_params: Dict = None) -> str:
+        """Create a new short URL"""
         try:
-            # Clean and validate URL
-            cleaned_url = url_data['url'].strip()
-            
-            # Handle Facebook URLs
-            if 'facebook.com' in cleaned_url or 'fb.com' in cleaned_url:
-                if not cleaned_url.startswith(('http://', 'https://')):
-                    cleaned_url = 'https://' + cleaned_url.lstrip('www.')
-                logger.info(f"Processing Facebook URL: {cleaned_url}")
-            else:
-                if not cleaned_url.startswith(('http://', 'https://')):
-                    cleaned_url = 'https://' + cleaned_url
-                if not validators.url(cleaned_url):
-                    st.error('Please enter a valid URL')
-                    return None
+            # Validate URL
+            if not validators.url(url):
+                raise ValueError("Invalid URL provided")
 
-            # Generate or use custom short code
-            short_code = url_data.get('custom_code') or self.generate_short_code()
-            
-            # Save to database
-            if self.db.save_url(
-                url=cleaned_url,
+            # Generate short code
+            short_code = self.generate_short_code()
+
+            # Add UTM parameters if provided
+            if utm_params:
+                parsed_url = urlparse(url)
+                query_params = parse_qs(parsed_url.query)
+                
+                # Add UTM parameters
+                if utm_params.get('source'): query_params['utm_source'] = [utm_params['source']]
+                if utm_params.get('medium'): query_params['utm_medium'] = [utm_params['medium']]
+                if utm_params.get('campaign'): query_params['utm_campaign'] = [utm_params['campaign']]
+                if utm_params.get('content'): query_params['utm_content'] = [utm_params['content']]
+                
+                # Reconstruct URL with UTM parameters
+                url = parsed_url._replace(query=urlencode(query_params, doseq=True)).geturl()
+
+            # Store in database
+            success = self.db.add_url(
                 short_code=short_code,
-                enable_tracking=url_data.get('tracking', True)
-            ):
-                logger.info(f"Successfully created short URL: {short_code}")
-                return short_code
-            else:
-                st.error("Failed to save URL")
-                return None
+                original_url=url,
+                campaign_name=campaign_name,
+                campaign_type=campaign_type
+            )
+
+            if not success:
+                raise Exception("Failed to save URL to database")
+
+            logger.info(f"Created short URL for {url}: {short_code}")
+            return short_code
 
         except Exception as e:
             logger.error(f"Error creating short URL: {str(e)}")
-            st.error("An error occurred while creating the short URL")
-            return None
+            raise
 
     def handle_redirect(self, short_code: str):
         """Handle URL redirection"""
@@ -559,6 +564,99 @@ class URLShortener:
             use_container_width=True
         )
 
+    def render_analytics_dashboard(self):
+        """Render the analytics dashboard"""
+        # Get analytics data
+        analytics_data = self.db.get_analytics_summary()
+        
+        # Date filter
+        col1, col2 = st.columns(2)
+        with col1:
+            st.date_input("Date Range", [])
+        with col2:
+            st.multiselect("Filter Campaigns", 
+                          [c.get('campaign_name') for c in self.db.get_all_urls()])
+        
+        # Analytics Overview
+        st.markdown("### 📊 Analytics Overview")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Clicks", analytics_data.get('total_clicks', 0), "↑15%")
+        with col2:
+            st.metric("Unique Visitors", analytics_data.get('unique_visitors', 0), "↑10%")
+        with col3:
+            st.metric("Avg. Time on Page", "2m 34s", "↑5%")
+        with col4:
+            st.metric("Bounce Rate", "32%", "↓2%")
+
+        # Charts
+        col1, col2 = st.columns(2)
+        with col1:
+            if analytics_data['daily_stats']:
+                df = pd.DataFrame(list(analytics_data['daily_stats'].items()), 
+                                columns=['Date', 'Clicks'])
+                fig = px.line(df, x='Date', y='Clicks', 
+                             title='Daily Click Trends')
+                st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            if analytics_data['device_breakdown']:
+                df = pd.DataFrame(list(analytics_data['device_breakdown'].items()),
+                                columns=['Device', 'Count'])
+                fig = px.pie(df, values='Count', names='Device',
+                            title='Device Distribution')
+                st.plotly_chart(fig, use_container_width=True)
+
+        # Campaign Performance Table
+        st.markdown("### 🎯 Campaign Performance")
+        performance_data = self.db.get_campaign_performance()
+        if not performance_data.empty:
+            st.dataframe(
+                performance_data,
+                column_config={
+                    "campaign_name": "Campaign",
+                    "total_clicks": st.column_config.NumberColumn("Clicks"),
+                    "unique_visitors": st.column_config.NumberColumn("Unique Visitors"),
+                    "engagement_rate": st.column_config.NumberColumn("Engagement", format="%.2f%%"),
+                    "active_days": st.column_config.NumberColumn("Active Days")
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+
+def auto_collapse_sidebar():
+    """Add JavaScript to automatically collapse the sidebar after selection"""
+    js_code = """
+        <script>
+            function waitForElement(selector, callback) {
+                if (document.querySelector(selector)) {
+                    callback();
+                } else {
+                    setTimeout(() => waitForElement(selector, callback), 100);
+                }
+            }
+
+            waitForElement('[data-testid="stSidebar"]', () => {
+                const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
+                const sidebarContent = sidebar.querySelector('[data-testid="stSidebarContent"]');
+                
+                sidebarContent.addEventListener('click', (e) => {
+                    // Check if click is on a navigation item
+                    if (e.target.closest('.stRadio') || e.target.closest('.stButton')) {
+                        // Wait for the next tick to ensure state is updated
+                        setTimeout(() => {
+                            const collapseButton = sidebar.querySelector('[data-testid="collapsedControl"]');
+                            if (collapseButton) {
+                                collapseButton.click();
+                            }
+                        }, 100);
+                    }
+                });
+            });
+        </script>
+    """
+    html(js_code)
+
 def capture_client_info():
     """Capture client information for analytics"""
     try:
@@ -590,515 +688,312 @@ def capture_client_info():
         logger.error(f"Error capturing client info: {str(e)}")
 
 def main():
+    # Initialize components
+    auto_collapse_sidebar()
     capture_client_info()
+    
     # Initialize shortener
     shortener = URLShortener()
-
-    # Check for redirect parameter
-    params = st.query_params
-    if 'r' in params:
-        short_code = params['r']
-        shortener.handle_redirect(short_code)
-        return
-
+    
     # Get all campaigns data once at the start
     all_campaigns = shortener.db.get_all_urls()
     active_campaigns = [c for c in all_campaigns if c.get('is_active', True)]
-    total_clicks = shortener.db.get_total_clicks()
-
+    dashboard_metrics = shortener.db.get_dashboard_metrics()
+    
     # Sidebar Menu
     with st.sidebar:
+        st.markdown('<div class="sidebar-nav">', unsafe_allow_html=True)
+        
         st.markdown("### 🎯 Campaign Manager")
+        
         selected_page = st.radio(
             "Navigation",
-            ["📊 Dashboard", "🔗 Campaign Creator", "📈 Analytics", "⚙️ Settings"],
-            index=0
+            [
+                "📊 Dashboard",
+                "🔗 Create Campaign",
+                "📈 Analytics",
+                "⚙️ Settings"
+            ],
+            index=0,
+            key="nav",
+            label_visibility="collapsed"
         )
 
-    # Main Header with Stats
-    st.markdown("""
-        <div class="main-header">
-            <h1>Campaign Dashboard</h1>
-        </div>
-    """, unsafe_allow_html=True)
+        st.markdown("<hr/>", unsafe_allow_html=True)
 
+        # Quick Actions
+        st.markdown("""
+            <div class="sidebar-section">
+                <h4>Quick Actions</h4>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("➕ New Campaign", key="new_campaign_btn", use_container_width=True):
+            st.session_state['selected_page'] = "🔗 Create Campaign"
+            st.rerun()
+
+    # Main Content Area
     if selected_page == "📊 Dashboard":
-        # Stats row at the top
+        st.markdown("""
+            <div class="main-header">
+                <h1>Campaign Dashboard</h1>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Top Metrics
         col1, col2, col3, col4 = st.columns(4)
-        
         with col1:
-            st.metric("🔗 Active Campaigns", 
-                     len(active_campaigns), 
-                     f"+{len(active_campaigns)}")
+            st.metric("Active Campaigns", 
+                     dashboard_metrics["active_campaigns"]["value"],
+                     dashboard_metrics["active_campaigns"]["growth"])
         with col2:
-            total_clicks = sum(campaign['total_clicks'] for campaign in active_campaigns)
-            st.metric("👆 Total Clicks", 
-                     f"{total_clicks:,}", 
-                     f"+{total_clicks}")
+            st.metric("Total Clicks", 
+                     dashboard_metrics["total_clicks"]["value"],
+                     dashboard_metrics["total_clicks"]["growth"])
         with col3:
-            avg_clicks = total_clicks / len(active_campaigns) if active_campaigns else 0
-            st.metric("📊 Avg. Clicks/Campaign", 
-                     f"{avg_clicks:.1f}", 
-                     "+0.8%")
+            st.metric("Conversion Rate", 
+                     dashboard_metrics["conversion_rate"]["value"],
+                     dashboard_metrics["conversion_rate"]["growth"])
         with col4:
-            recent_clicks = shortener.db.get_recent_clicks_count(hours=24)
-            st.metric("🎯 Recent Activity", 
-                     f"{recent_clicks:,}", 
-                     f"+{recent_clicks}")
+            st.metric("ROI", 
+                     dashboard_metrics["roi"]["value"],
+                     dashboard_metrics["roi"]["growth"])
 
-        # Active Campaigns Section
-        st.markdown("### 📈 Active Campaigns")
+        # Recent Activity and Campaign Performance
+        col1, col2 = st.columns([2,1])
         
-        # Filters and search
-        col1, col2, col3 = st.columns([2,1,1])
         with col1:
-            search = st.text_input("🔍 Search", placeholder="Search campaigns...")
-        with col2:
-            status_filter = st.selectbox("Status", ["All", "Active", "Inactive"])
-        with col3:
-            sort_by = st.selectbox("Sort by", ["Created", "Clicks", "Campaign Name"])
-
-        # Create DataFrame for campaigns
-        if active_campaigns:
-            df = pd.DataFrame([
-                {
-                    'Campaign Name': c.get('campaign_name', c['short_code']),
-                    'Original URL': c['original_url'],
-                    'Short URL': f"{BASE_URL}?r={c['short_code']}",
-                    'Created': datetime.strptime(c['created_at'], '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d'),
-                    'Total Clicks': c['total_clicks'],
-                    'Status': 'Active',
-                    'Actions': c['short_code']
-                } for c in active_campaigns
-            ])
-
-            # Apply filters and sorting
-            if search:
-                df = df[df['Campaign Name'].str.contains(search, case=False)]
-            if sort_by == "Clicks":
-                df = df.sort_values('Total Clicks', ascending=False)
-            elif sort_by == "Campaign Name":
-                df = df.sort_values('Campaign Name')
+            st.markdown("### 📈 Recent Activity")
+            recent_activities = shortener.db.get_recent_activity()
+            if recent_activities:
+                for activity in recent_activities:
+                    clicked_at = datetime.strptime(activity['clicked_at'], '%Y-%m-%d %H:%M:%S')
+                    now = datetime.now()
+                    time_diff = now - clicked_at
+                    
+                    if time_diff.days > 0:
+                        time_ago = f"{time_diff.days} days ago"
+                    elif time_diff.seconds > 3600:
+                        hours = time_diff.seconds // 3600
+                        time_ago = f"{hours} hours ago"
+                    elif time_diff.seconds > 60:
+                        minutes = time_diff.seconds // 60
+                        time_ago = f"{minutes} minutes ago"
+                    else:
+                        time_ago = "just now"
+                    
+                    st.markdown(f"""
+                        <div class="activity-item">
+                            🔗 <strong>{activity['campaign_name']}</strong> was clicked from 
+                            {activity['country']} on {activity['device_type']}
+                            <span class="activity-time">({time_ago})</span>
+                        </div>
+                    """, unsafe_allow_html=True)
             else:
-                df = df.sort_values('Created', ascending=False)
+                st.info("No recent activity to display")
 
-            # Display table
+        with col2:
+            st.markdown("### 🌍 Top Countries")
+            analytics_data = shortener.db.get_analytics_summary()
+            if analytics_data.get('country_breakdown'):
+                df = pd.DataFrame(list(analytics_data['country_breakdown'].items()),
+                                columns=['Country', 'Visits'])
+                df = df.sort_values('Visits', ascending=True).tail(5)
+                fig = px.bar(df, x='Visits', y='Country', orientation='h',
+                           template="plotly_dark")
+                fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    margin=dict(l=20, r=20, t=30, b=20),
+                    height=200  # Reduced height
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+        # Campaign Performance
+        st.markdown("### 🎯 Campaign Performance")
+        performance_data = shortener.db.get_campaign_performance()
+        if not performance_data.empty:
             st.dataframe(
-                df,
+                performance_data,
                 column_config={
-                    "Campaign Name": st.column_config.TextColumn("Campaign Name", width="medium"),
-                    "Short URL": st.column_config.LinkColumn("Short URL", width="medium"),
-                    "Total Clicks": st.column_config.NumberColumn("Clicks", format="%d"),
-                    "Created": st.column_config.DateColumn("Created", format="MMM DD, YYYY"),
-                    "Status": st.column_config.TextColumn("Status", width="small")
+                    "campaign_name": "Campaign",
+                    "total_clicks": st.column_config.NumberColumn("Clicks"),
+                    "unique_visitors": st.column_config.NumberColumn("Unique Visitors"),
+                    "engagement_rate": st.column_config.NumberColumn("Engagement", format="%.2f%%"),
+                    "active_days": st.column_config.NumberColumn("Active Days")
                 },
                 hide_index=True,
                 use_container_width=True
             )
 
-            # Campaign Actions and Settings
-            for _, row in df.iterrows():
-                with st.expander(f"🎯 Campaign: {row['Campaign Name']}", expanded=False):
-                    settings_tab, analytics_tab, social_tab = st.tabs(["⚙️ Settings", "📊 Analytics", "🌐 Social Media"])
-                    
-                    with analytics_tab:
-                        st.markdown("#### Campaign Performance")
-                        metric1, metric2, metric3 = st.columns(3)
-                        with metric1:
-                            st.metric("Total Clicks", row['Total Clicks'])
-                        with metric2:
-                            st.metric("Conversion Rate", "4.2%")
-                        with metric3:
-                            st.metric("Avg. Time on Page", "2m 34s")
-                        
-                        # Add click timeline chart
-                        timeline_data = shortener.db.get_click_timeline(row['Actions'])
-                        if not timeline_data.empty:
-                            st.markdown("#### Click Timeline")
-                            st.line_chart(
-                                timeline_data,
-                                use_container_width=True
-                            )
-                        else:
-                            st.info("No click data available yet for this campaign")
+        # Analytics Overview at the bottom
+        st.markdown("### 📊 Analytics Overview")
+        
+        # Filters in a more compact layout
+        with st.expander("📅 Filter Analytics", expanded=False):
+            fcol1, fcol2 = st.columns(2)
+            with fcol1:
+                st.date_input("Date Range", [])
+            with fcol2:
+                st.multiselect("Campaigns", 
+                             [c.get('campaign_name') for c in all_campaigns])
 
-    elif selected_page == "🔗 Campaign Creator":
+        # Analytics charts in a responsive layout
+        chart_col1, chart_col2 = st.columns(2)
+        
+        with chart_col1:
+            if analytics_data['daily_stats']:
+                df = pd.DataFrame(list(analytics_data['daily_stats'].items()), 
+                                columns=['Date', 'Clicks'])
+                fig = px.line(df, x='Date', y='Clicks',
+                            template="plotly_dark",
+                            line_shape="spline")
+                fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    margin=dict(l=20, r=20, t=30, b=20),
+                    height=300,  # Fixed height
+                    title={
+                        'text': "Click Trends",
+                        'y':0.95,
+                        'x':0.5,
+                        'xanchor': 'center',
+                        'yanchor': 'top'
+                    }
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+        with chart_col2:
+            if analytics_data['device_breakdown']:
+                df = pd.DataFrame(list(analytics_data['device_breakdown'].items()),
+                                columns=['Device', 'Count'])
+                fig = px.pie(df, values='Count', names='Device',
+                           template="plotly_dark",
+                           hole=0.4)
+                fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    margin=dict(l=20, r=20, t=30, b=20),
+                    height=300,  # Fixed height
+                    title={
+                        'text': "Device Distribution",
+                        'y':0.95,
+                        'x':0.5,
+                        'xanchor': 'center',
+                        'yanchor': 'top'
+                    }
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+    elif selected_page == "🔗 Create Campaign":
+        st.markdown("""
+            <div class="main-header">
+                <h1>Create Campaign</h1>
+            </div>
+        """, unsafe_allow_html=True)
+        
         # Campaign Creation Form
-        with st.form("url_shortener_form", clear_on_submit=True):
-            st.markdown('<div class="section-header">Create Campaign URL</div>', unsafe_allow_html=True)
+        with st.form("campaign_form"):
+            campaign_name = st.text_input("Campaign Name")
+            original_url = st.text_input("Original URL")
+            campaign_type = st.selectbox("Campaign Type", list(CAMPAIGN_TYPES.keys()))
             
-            # Basic URL Input
-            url = st.text_input(
-                "Long URL",
-                placeholder="https://example.com",
-                key="long_url_input"
-            )
-            
-            # Campaign Details
-            st.markdown('<div class="section-title">Campaign Details</div>', unsafe_allow_html=True)
-            col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
             with col1:
-                campaign_name = st.text_input(
-                    "Campaign Name*", 
-                    placeholder="summer_sale_2024",
-                    help="Campaign name must be unique",
-                    key="campaign_name_input"
-                )
+                utm_source = st.text_input("UTM Source", placeholder="e.g., facebook")
+                utm_medium = st.text_input("UTM Medium", placeholder="e.g., social")
             with col2:
-                custom_code = st.text_input(
-                    "Custom Short Code",
-                    placeholder="summer24",
-                    help="Leave empty for auto-generated code",
-                    key="custom_code_input"
-                )
-            with col3:
-                campaign_type = st.selectbox(
-                    "Campaign Type",
-                    options=list(CAMPAIGN_TYPES.keys()),
-                    key="campaign_type_select"
-                )
+                utm_campaign = st.text_input("UTM Campaign", placeholder="e.g., summer_sale")
+                utm_content = st.text_input("UTM Content", placeholder="e.g., banner_1")
 
-            # UTM Parameters
-            st.markdown('<div class="section-title">UTM Parameters</div>', unsafe_allow_html=True)
-            utm_col1, utm_col2, utm_col3 = st.columns(3)
-            with utm_col1:
-                utm_source = st.text_input(
-                    "Source",
-                    placeholder="facebook",
-                    key="utm_source_input"
-                )
-                utm_medium = st.text_input(
-                    "Medium",
-                    placeholder="social",
-                    key="utm_medium_input"
-                )
-            with utm_col2:
-                utm_campaign = st.text_input(
-                    "Campaign",
-                    placeholder="summer_sale",
-                    key="utm_campaign_input"
-                )
-                utm_content = st.text_input(
-                    "Content",
-                    placeholder="banner_1",
-                    key="utm_content_input"
-                )
-            with utm_col3:
-                utm_term = st.text_input(
-                    "Term",
-                    placeholder="summer_fashion",
-                    key="utm_term_input"
-                )
+            # QR Code Options
+            st.markdown("### 📱 QR Code Options")
+            qr_col1, qr_col2 = st.columns(2)
+            with qr_col1:
+                generate_qr = st.checkbox("Generate QR Code", value=True)
+                qr_foreground = st.color_picker("QR Code Color", "#000000")
+            with qr_col2:
+                qr_size = st.slider("QR Code Size", 100, 500, 200)
+                qr_background = st.color_picker("Background Color", "#FFFFFF")
 
-            submitted = st.form_submit_button(
-                "Create Campaign URL",
-                use_container_width=True,
-                type="primary"
-            )
+            submitted = st.form_submit_button("Create Campaign", type="primary", use_container_width=True)
+            
+            if submitted and campaign_name and original_url:
+                short_code = shortener.create_short_url(
+                    url=original_url,
+                    campaign_name=campaign_name,
+                    campaign_type=campaign_type,
+                    utm_params={
+                        'source': utm_source,
+                        'medium': utm_medium,
+                        'campaign': utm_campaign,
+                        'content': utm_content
+                    }
+                )
+                
+                # Show success message with short URL
+                short_url = f"{BASE_URL}?r={short_code}"
+                st.success(f"Campaign created successfully! Short URL: {short_url}")
 
-            if submitted:
-                if not url:
-                    st.error("URL is required!")
-                    return
-                
-                if not campaign_name:
-                    st.error("Campaign name is required!")
-                    return
-                
-                if not validators.url(url):
-                    st.error("Please enter a valid URL!")
-                    return
-                
-                form_data = {
-                    'url': url,
-                    'campaign_name': campaign_name,
-                    'custom_code': custom_code,
-                    'campaign_type': campaign_type,
-                    'utm_source': utm_source,
-                    'utm_medium': utm_medium,
-                    'utm_campaign': utm_campaign,
-                    'utm_content': utm_content,
-                    'utm_term': utm_term
-                }
-                
-                short_code = shortener.create_campaign_url(form_data)
-                if short_code:
-                    shortened_url = f"{BASE_URL}?r={short_code}"
-                    st.success(f"✨ Campaign '{campaign_name}' created successfully!")
-                    st.code(shortened_url, language=None)
-                    st.rerun()
-                else:
-                    st.error("Failed to create campaign. Please try again.")
+                # Generate and display QR code if selected
+                if generate_qr:
+                    qr = qrcode.QRCode(
+                        version=1,
+                        error_correction=qrcode.constants.ERROR_CORRECT_L,
+                        box_size=10,
+                        border=4,
+                    )
+                    qr.add_data(short_url)
+                    qr.make(fit=True)
+
+                    # Create QR code image with selected colors
+                    qr_img = qr.make_image(
+                        fill_color=qr_foreground,
+                        back_color=qr_background
+                    )
+                    
+                    # Convert PIL image to bytes for display
+                    img_byte_arr = BytesIO()
+                    qr_img.save(img_byte_arr, format='PNG')
+                    img_byte_arr = img_byte_arr.getvalue()
+
+                    # Display QR code
+                    st.markdown("### 📱 Campaign QR Code")
+                    col1, col2, col3 = st.columns([1,2,1])
+                    with col2:
+                        st.image(img_byte_arr, width=qr_size)
+                        
+                        # Download button for QR code
+                        st.download_button(
+                            label="⬇️ Download QR Code",
+                            data=img_byte_arr,
+                            file_name=f"qr_code_{campaign_name}.png",
+                            mime="image/png",
+                            use_container_width=True
+                        )
 
     elif selected_page == "📈 Analytics":
-        st.markdown("### 📊 Analytics Dashboard")
-        
-        # Date Range and Campaign Selection
-        col1, col2 = st.columns(2)
-        with col1:
-            date_range = st.date_input(
-                "Date Range",
-                value=[datetime.now().date() - timedelta(days=30), datetime.now().date()],
-                key="analytics_date_range"
-            )
-        with col2:
-            campaigns = shortener.db.get_all_urls()
-            campaign_options = [c['campaign_name'] for c in campaigns]
-            selected_campaign = st.selectbox(
-                "Select Campaign",
-                ["All Campaigns"] + campaign_options,
-                key="analytics_campaign_select"
-            )
-
-        # Get analytics data
-        short_code = next((c['short_code'] for c in campaigns 
-                          if c['campaign_name'] == selected_campaign), None) \
-                    if selected_campaign != "All Campaigns" else None
-        
-        analytics_data = shortener.db.get_analytics_summary(
-            short_code=short_code,
-            days=(datetime.now().date() - date_range[0]).days
-        )
-        
-        # Performance Metrics
-        st.markdown("#### 📊 Performance Overview")
-        performance_df = shortener.db.get_campaign_performance(short_code)
-        
-        metric_cols = st.columns(4)
-        with metric_cols[0]:
-            total_clicks = performance_df['total_clicks'].sum()
-            st.metric("Total Clicks", f"{total_clicks:,}")
-        with metric_cols[1]:
-            unique_visitors = performance_df['unique_visitors'].sum()
-            st.metric("Unique Visitors", f"{unique_visitors:,}")
-        with metric_cols[2]:
-            countries = performance_df['countries_reached'].sum()
-            st.metric("Countries Reached", countries)
-        with metric_cols[3]:
-            engagement = performance_df['engagement_rate'].mean()
-            st.metric("Avg. Engagement Rate", f"{engagement:.1f}%")
-
-        # Traffic Trends
-        st.markdown("#### 📈 Traffic Trends")
-        trend_tabs = st.tabs(["Daily Trend", "Hourly Distribution"])
-        
-        with trend_tabs[0]:
-            daily_df = pd.DataFrame(
-                analytics_data['daily_stats'].items(),
-                columns=['Date', 'Clicks']
-            )
-            st.line_chart(daily_df.set_index('Date'))
-            
-        with trend_tabs[1]:
-            hourly_df = pd.DataFrame(
-                analytics_data['hourly_stats'].items(),
-                columns=['Hour', 'Clicks']
-            )
-            fig = px.bar(hourly_df, x='Hour', y='Clicks',
-                        title='Hourly Click Distribution')
-            st.plotly_chart(fig, use_container_width=True)
-
-        # Audience Insights
-        st.markdown("#### 👥 Audience Insights")
-        insight_cols = st.columns(3)
-        
-        with insight_cols[0]:
-            st.markdown("**Device Breakdown**")
-            device_df = pd.DataFrame(
-                analytics_data['device_breakdown'].items(),
-                columns=['Device', 'Count']
-            )
-            fig = px.pie(device_df, values='Count', names='Device',
-                        title='Traffic by Device')
-            st.plotly_chart(fig, use_container_width=True)
-            
-        with insight_cols[1]:
-            st.markdown("**Browser Distribution**")
-            browser_df = pd.DataFrame(
-                analytics_data['browser_breakdown'].items(),
-                columns=['Browser', 'Count']
-            )
-            fig = px.pie(browser_df, values='Count', names='Browser',
-                        title='Traffic by Browser')
-            st.plotly_chart(fig, use_container_width=True)
-            
-        with insight_cols[2]:
-            st.markdown("**Top Countries**")
-            country_df = pd.DataFrame(
-                analytics_data['country_breakdown'].items(),
-                columns=['Country', 'Visits']
-            )
-            fig = px.bar(country_df, x='Country', y='Visits',
-                        title='Top Countries')
-            st.plotly_chart(fig, use_container_width=True)
-
-        # Campaign Details Table
-        st.markdown("#### 🎯 Campaign Details")
-        st.dataframe(
-            performance_df,
-            column_config={
-                "campaign_name": "Campaign",
-                "campaign_type": "Type",
-                "total_clicks": st.column_config.NumberColumn("Total Clicks"),
-                "unique_visitors": st.column_config.NumberColumn("Unique Visitors"),
-                "countries_reached": st.column_config.NumberColumn("Countries"),
-                "active_days": "Active Days",
-                "engagement_rate": st.column_config.NumberColumn(
-                    "Engagement Rate",
-                    format="%.2f%%"
-                )
-            },
-            hide_index=True,
-            use_container_width=True
-        )
+        shortener.render_analytics_dashboard()
 
     elif selected_page == "⚙️ Settings":
-        st.markdown("### ⚙️ Settings")
+        st.markdown("""
+            <div class="main-header">
+                <h1>Settings</h1>
+            </div>
+        """, unsafe_allow_html=True)
         
-        settings_tabs = st.tabs(["Overview", "Organization", "Campaign Settings", "Integrations"])
+        settings_tab1, settings_tab2 = st.tabs(["General", "Integrations"])
         
-        with settings_tabs[0]:
-            st.markdown("#### Dashboard Overview")
+        with settings_tab1:
+            st.markdown("### General Settings")
+            st.text_input("Default UTM Source")
+            st.text_input("Custom Domain")
+            st.checkbox("Auto-generate QR Codes")
             
-            # Organization & Campaign Stats
-            overview_col1, overview_col2, overview_col3, overview_col4 = st.columns(4)
-            with overview_col1:
-                org_count = len(shortener.db.get_all_organizations()) if hasattr(shortener.db, 'get_all_organizations') else 0
-                st.metric("Organizations", org_count)
-            with overview_col2:
-                connected_platforms = sum(1 for org in shortener.db.get_all_organizations() 
-                                       if hasattr(shortener.db, 'get_all_organizations') 
-                                       for platform, creds in org.get('social_media', {}).items() 
-                                       if any(creds.values()))
-                st.metric("Connected Platforms", connected_platforms)
-            with overview_col3:
-                active_campaigns = len([c for c in shortener.db.get_all_urls() if c.get('is_active', True)])
-                st.metric("Active Campaigns", active_campaigns)
-            with overview_col4:
-                completed_campaigns = len([c for c in shortener.db.get_all_urls() if not c.get('is_active', True)])
-                st.metric("Completed Campaigns", completed_campaigns)
-
-        # Keep existing Organization tab
-        with settings_tabs[1]:
-            st.markdown("#### Organization Settings")
-            # ... (keep existing organization settings code)
-
-        with settings_tabs[2]:
-            st.markdown("#### Campaign Settings")
-            
-            # Campaign Default Settings
-            st.subheader("Default Campaign Settings")
-            camp_col1, camp_col2 = st.columns(2)
-            with camp_col1:
-                st.selectbox("Default UTM Source", 
-                            ["facebook", "twitter", "linkedin", "instagram", "email"],
-                            key="default_utm_source_select")
-                st.selectbox("Default Campaign Type", 
-                            list(CAMPAIGN_TYPES.keys()),
-                            key="default_campaign_type_select")
-                st.text_input("Custom Domain", 
-                            placeholder="links.yourdomain.com",
-                            key="custom_domain_input")
-            with camp_col2:
-                st.checkbox("Auto-generate QR Codes", key="auto_qr_checkbox")
-                st.checkbox("Enable Link Retargeting", key="link_retarget_checkbox")
-                st.number_input("Default Link Expiry (days)", 
-                              value=30,
-                              key="link_expiry_input")
-
-            # Campaign Features
-            st.subheader("Campaign Features")
-            feature_col1, feature_col2, feature_col3 = st.columns(3)
-            with feature_col1:
-                st.checkbox("Enable A/B Testing", key="ab_testing_checkbox")
-                st.checkbox("Enable UTM Builder", key="utm_builder_checkbox")
-            with feature_col2:
-                st.checkbox("Enable QR Codes", key="qr_codes_checkbox")
-                st.checkbox("Enable Deep Links", key="deep_links_checkbox")
-            with feature_col3:
-                st.checkbox("Enable Custom Domains", key="custom_domains_checkbox")
-                st.checkbox("Enable Link Retargeting", key="retargeting_checkbox")
-
-            # Campaign Analytics Settings
-            st.subheader("Analytics Settings")
-            analytics_col1, analytics_col2 = st.columns(2)
-            with analytics_col1:
-                st.checkbox("Track Click Location", key="track_location_checkbox")
-                st.checkbox("Track Device Info", key="track_device_checkbox")
-            with analytics_col2:
-                st.checkbox("Track Referrer", key="track_referrer_checkbox")
-                st.checkbox("Enable Conversion Tracking", key="conversion_tracking_checkbox")
-
-        with settings_tabs[3]:
-            st.markdown("#### Integrations")
-            
-            # Analytics Integrations
-            st.subheader("Analytics Integrations")
-            analytics_col1, analytics_col2 = st.columns(2)
-            with analytics_col1:
-                st.checkbox("Google Analytics", key="ga_checkbox")
-                ga_id = st.text_input("Google Analytics ID", 
-                                    type="password",
-                                    key="ga_id_input")
-            with analytics_col2:
-                st.checkbox("Facebook Pixel", key="fb_pixel_checkbox")
-                pixel_id = st.text_input("Facebook Pixel ID", 
-                                       type="password",
-                                       key="fb_pixel_id_input")
-
-            # Marketing Integrations
-            st.subheader("Marketing Tools")
-            marketing_col1, marketing_col2, marketing_col3 = st.columns(3)
-            with marketing_col1:
-                st.checkbox("Mailchimp", key="mailchimp_checkbox")
-                mailchimp_api = st.text_input("Mailchimp API Key", 
-                                            type="password",
-                                            key="mailchimp_api_input")
-            with marketing_col2:
-                st.checkbox("HubSpot", key="hubspot_checkbox")
-                hubspot_api = st.text_input("HubSpot API Key", 
-                                          type="password",
-                                          key="hubspot_api_input")
-            with marketing_col3:
-                st.checkbox("Salesforce", key="salesforce_checkbox")
-                salesforce_api = st.text_input("Salesforce API Key", 
-                                             type="password",
-                                             key="salesforce_api_input")
-
-            # Automation Integrations
-            st.subheader("Automation Tools")
-            automation_col1, automation_col2 = st.columns(2)
-            with automation_col1:
-                st.checkbox("Zapier", key="zapier_checkbox")
-                zapier_webhook = st.text_input("Zapier Webhook URL",
-                                             key="zapier_webhook_input")
-            with automation_col2:
-                st.checkbox("Make.com (Integromat)", key="make_checkbox")
-                make_webhook = st.text_input("Make.com Webhook URL",
-                                           key="make_webhook_input")
-
-            # Custom Webhooks
-            st.subheader("Custom Webhooks")
-            webhook_col1, webhook_col2 = st.columns(2)
-            with webhook_col1:
-                st.text_input("Webhook URL", key="webhook_url_input")
-                st.multiselect(
-                    "Trigger Events",
-                    ["Link Created", "Link Clicked", "Campaign Updated", "Campaign Deleted"],
-                    key="webhook_events_select"
-                )
-            with webhook_col2:
-                st.selectbox("Webhook Method", 
-                            ["POST", "GET", "PUT"],
-                            key="webhook_method_select")
-                st.text_area("Custom Headers (JSON)",
-                            key="webhook_headers_input")
-
-            # Save Integration Settings
-            if st.button("Save Integration Settings", 
-                        type="primary",
-                        key="save_integrations_button"):
-                st.success("Integration settings saved successfully!")
+        with settings_tab2:
+            st.markdown("### Integration Settings")
+            st.text_input("API Key")
+            st.text_input("Webhook URL")
 
 if __name__ == "__main__":
     main() 

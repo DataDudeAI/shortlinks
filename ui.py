@@ -20,67 +20,63 @@ BASE_URL = "https://shortlinksnandan.streamlit.app"
 logger = logging.getLogger(__name__)
 
 class UI:
-    def __init__(self, url_shortener):
-        """Initialize UI with URL shortener instance"""
-        self.url_shortener = url_shortener
+    def __init__(self, shortener):
+        self.shortener = shortener
 
     def render_header(self):
         """Render the main header"""
         st.markdown("""
-            <div class="header-accent">
-                <span>🎯</span>
-                <span style="background: linear-gradient(135deg, #00ff88 0%, #00bfff 100%); 
-                         -webkit-background-clip: text;
-                         -webkit-text-fill-color: transparent;
-                         font-weight: 700;">
-                    Campaign Dashboard
-                </span>
+            <div class="main-header">
+                <h1>Campaign Dashboard</h1>
             </div>
         """, unsafe_allow_html=True)
 
     def render_sidebar(self):
         """Render the sidebar navigation"""
         with st.sidebar:
+            st.markdown('<div class="sidebar-nav">', unsafe_allow_html=True)
+            
             st.markdown("### 🎯 Campaign Manager")
-            return st.radio(
+            
+            selected_page = st.radio(
                 "Navigation",
-                ["📊 Dashboard", "🔗 Campaign Creator", "📈 Analytics", "⚙️ Settings"],
-                index=0
+                [
+                    "📊 Dashboard",
+                    "🔗 Create Campaign",
+                    "📈 Analytics",
+                    "⚙️ Settings"
+                ],
+                index=0,
+                key="nav",
+                label_visibility="collapsed"
             )
 
-    def render_metrics(self, active_campaigns, total_clicks):
-        """Render the metrics row"""
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("🔗 Active Campaigns", 
-                     len(active_campaigns),
-                     f"+{len(active_campaigns)}")
-        
-        with col2:
-            st.metric("👆 Total Clicks", 
-                     f"{total_clicks:,}", 
-                     f"+{total_clicks}")
-        
-        with col3:
-            avg_clicks = total_clicks / len(active_campaigns) if active_campaigns else 0
-            st.metric("📊 Avg. Clicks/Campaign", 
-                     f"{avg_clicks:.1f}",
-                     "+0.8%")
-        
-        with col4:
-            recent_clicks = self.url_shortener.db.get_recent_clicks_count(hours=24)
-            st.metric("🎯 Recent Activity", 
-                     f"{recent_clicks:,}", 
-                     f"+{recent_clicks}")
+            st.markdown("<hr/>", unsafe_allow_html=True)
 
-    def render_campaign_filters(self):
-        """Render campaign filters"""
-        col1, col2, col3 = st.columns([2,1,1])
-        with col1:
-            search = st.text_input("🔍 Search", placeholder="Search campaigns...")
-        with col2:
-            status = st.selectbox("Status", ["All", "Active", "Inactive"])
-        with col3:
-            sort_by = st.selectbox("Sort by", ["Created", "Clicks", "Campaign Name"])
-        return search, status, sort_by
+            # Quick Actions
+            st.markdown("""
+                <div class="sidebar-section">
+                    <h4>Quick Actions</h4>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            if st.button("➕ New Campaign", key="new_campaign_btn", use_container_width=True):
+                st.session_state['selected_page'] = "🔗 Create Campaign"
+                st.rerun()
+
+        return selected_page
+
+    def render_page_header(self, title: str):
+        """Render page header without extra space"""
+        st.markdown(f"""
+            <div class="main-header">
+                <h1>{title}</h1>
+            </div>
+        """, unsafe_allow_html=True)
+
+    def render_metrics(self, metrics: dict):
+        """Render dashboard metrics"""
+        cols = st.columns(len(metrics))
+        for col, (label, value) in zip(cols, metrics.items()):
+            with col:
+                st.metric(label, value)
