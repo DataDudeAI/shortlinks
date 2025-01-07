@@ -937,40 +937,53 @@ def main():
 
                 # Generate and display QR code if selected
                 if generate_qr:
-                    qr = qrcode.QRCode(
-                        version=1,
-                        error_correction=qrcode.constants.ERROR_CORRECT_L,
-                        box_size=10,
-                        border=4,
-                    )
-                    qr.add_data(short_url)
-                    qr.make(fit=True)
-
-                    # Create QR code image with selected colors
-                    qr_img = qr.make_image(
-                        fill_color=qr_foreground,
-                        back_color=qr_background
-                    )
-                    
-                    # Convert PIL image to bytes for display
-                    img_byte_arr = BytesIO()
-                    qr_img.save(img_byte_arr, format='PNG')
-                    img_byte_arr = img_byte_arr.getvalue()
-
-                    # Display QR code
-                    st.markdown("### 📱 Campaign QR Code")
-                    col1, col2, col3 = st.columns([1,2,1])
-                    with col2:
-                        st.image(img_byte_arr, width=qr_size)
-                        
-                        # Download button for QR code
-                        st.download_button(
-                            label="⬇️ Download QR Code",
-                            data=img_byte_arr,
-                            file_name=f"qr_code_{campaign_name}.png",
-                            mime="image/png",
-                            use_container_width=True
+                    try:
+                        qr = qrcode.QRCode(
+                            version=1,
+                            error_correction=qrcode.constants.ERROR_CORRECT_L,
+                            box_size=10,
+                            border=4,
                         )
+                        qr.add_data(short_url)
+                        qr.make(fit=True)
+
+                        # Create QR code image with selected colors
+                        qr_img = qr.make_image(
+                            fill_color=qr_foreground,
+                            back_color=qr_background
+                        )
+                        
+                        # Convert PIL image to bytes for display and download
+                        img_byte_arr = BytesIO()
+                        qr_img.save(img_byte_arr, format='PNG')
+                        img_byte_arr = img_byte_arr.getvalue()
+
+                        # Display QR code
+                        st.markdown("### 📱 Campaign QR Code")
+                        col1, col2, col3 = st.columns([1,2,1])
+                        with col2:
+                            st.image(img_byte_arr, width=qr_size)
+                            
+                            # Safe filename for download
+                            safe_filename = "".join(x for x in campaign_name if x.isalnum() or x in (' ', '-', '_'))
+                            safe_filename = f"qr_code_{safe_filename}.png"
+                            
+                            # Download button with proper error handling
+                            try:
+                                st.download_button(
+                                    label="⬇️ Download QR Code",
+                                    data=img_byte_arr,
+                                    file_name=safe_filename,
+                                    mime="image/png",
+                                    use_container_width=True
+                                )
+                            except Exception as e:
+                                st.error(f"Error creating download button: {str(e)}")
+                                logger.error(f"Download button error: {str(e)}")
+                    
+                    except Exception as e:
+                        st.error(f"Error generating QR code: {str(e)}")
+                        logger.error(f"QR code generation error: {str(e)}")
 
     elif selected_page == "📈 Analytics":
         shortener.render_analytics_dashboard()
