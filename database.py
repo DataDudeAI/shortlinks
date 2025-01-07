@@ -554,30 +554,25 @@ class Database:
             conn.close() 
 
     def increment_clicks(self, short_code: str, simulate_dates: bool = False) -> bool:
-        """Track click with basic analytics"""
+        """Increment click count and add analytics data"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # If simulating data, generate a random past date
+            # Get current timestamp or simulated date
             if simulate_dates:
-                c.execute('SELECT created_at FROM urls WHERE short_code = ?', (short_code,))
-                created_at = c.fetchone()[0]
-                created_date = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S')
-                now = datetime.now()
-                time_diff = (now - created_date).total_seconds()
-                random_seconds = random.uniform(0, time_diff)
-                click_date = created_date + timedelta(seconds=random_seconds)
-                now = click_date.strftime('%Y-%m-%d %H:%M:%S')
+                # For demo data, generate random date in last 30 days
+                days_ago = random.randint(0, 30)
+                clicked_at = (datetime.now() - timedelta(days=days_ago)).strftime('%Y-%m-%d %H:%M:%S')
             else:
-                now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                clicked_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-            # Update click count and last clicked timestamp
+            # Update clicks count in urls table
             c.execute('''
                 UPDATE urls 
                 SET total_clicks = total_clicks + 1,
                     last_clicked = ?
                 WHERE short_code = ?
-            ''', (now, short_code))
+            ''', (clicked_at, short_code))
 
             # Add analytics entry
             c.execute('''
@@ -588,30 +583,27 @@ class Database:
                     user_agent,
                     referrer,
                     country,
-                    city,
                     device_type,
                     browser,
                     os
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 short_code,
-                now,
+                clicked_at,
                 st.session_state.get('client_ip', 'Unknown'),
                 st.session_state.get('user_agent', 'Unknown'),
                 st.session_state.get('referrer', 'Direct'),
                 st.session_state.get('country', 'Unknown'),
-                st.session_state.get('city', 'Unknown'),
                 st.session_state.get('device_type', 'Unknown'),
                 st.session_state.get('browser', 'Unknown'),
                 st.session_state.get('os', 'Unknown')
             ))
-            
+
             conn.commit()
-            logger.info(f"Click tracked for {short_code}")
+            logger.info(f"Incremented clicks for {short_code}")
             return True
         except Exception as e:
-            logger.error(f"Error tracking click for {short_code}: {str(e)}")
-            conn.rollback()
+            logger.error(f"Error incrementing clicks: {str(e)}")
             return False
         finally:
             conn.close()
