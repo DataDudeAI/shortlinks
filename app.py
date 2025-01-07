@@ -130,30 +130,36 @@ class URLShortener:
         """Handle URL redirection"""
         logger.info(f"Attempting to redirect short_code: {short_code}")
         url_info = self.db.get_url_info(short_code)
-        logger.info(f"Retrieved URL info: {url_info}")
         
         if url_info:
             original_url = url_info['original_url']
             logger.info(f"Redirecting to: {original_url}")
             
-            # Track click
+            # Track click before redirect
             self.db.increment_clicks(short_code)
             
             # Use JavaScript for immediate redirect
-            js = f"""
-                <script>
-                    window.location.href = "{original_url}";
-                </script>
-                <noscript>
+            html = f"""
+                <html>
+                <head>
+                    <title>Redirecting...</title>
+                    <script>
+                        window.location.href = "{original_url}";
+                    </script>
                     <meta http-equiv="refresh" content="0;url={original_url}">
-                </noscript>
-                <p>Redirecting to {original_url}...</p>
-                <p>Click <a href="{original_url}">here</a> if not redirected automatically.</p>
+                </head>
+                <body>
+                    <p>Redirecting to {original_url}...</p>
+                    <p>Click <a href="{original_url}">here</a> if not redirected automatically.</p>
+                </body>
+                </html>
             """
-            st.markdown(js, unsafe_allow_html=True)
+            st.markdown(html, unsafe_allow_html=True)
+            return True
         else:
             st.error("Invalid or expired link")
-            st.markdown(f"[← Back to URL Shortener]({BASE_URL})")
+            st.markdown(f"[← Back to Campaign Dashboard]({BASE_URL})")
+            return False
 
     def render_campaign_dashboard(self):
         """Enhanced campaign management dashboard"""
@@ -520,9 +526,44 @@ class URLShortener:
             use_container_width=True
         )
 
+def capture_client_info():
+    """Capture client information for analytics"""
+    try:
+        # Get client IP
+        st.session_state['client_ip'] = st.experimental_get_query_params().get('client_ip', ['Unknown'])[0]
+        
+        # Get user agent
+        user_agent = st.request.headers.get('User-Agent', 'Unknown')
+        st.session_state['user_agent'] = user_agent
+        
+        # Get referrer
+        st.session_state['referrer'] = st.request.headers.get('Referer', 'Direct')
+        
+        # Basic device detection
+        st.session_state['device_type'] = 'Mobile' if 'Mobile' in user_agent else 'Desktop'
+        
+        # Basic browser detection
+        browsers = ['Chrome', 'Firefox', 'Safari', 'Edge']
+        st.session_state['browser'] = next((b for b in browsers if b in user_agent), 'Other')
+        
+        # Basic OS detection
+        os_list = ['Windows', 'Mac', 'Linux', 'Android', 'iOS']
+        st.session_state['os'] = next((os for os in os_list if os in user_agent), 'Other')
+        
+    except Exception as e:
+        logger.error(f"Error capturing client info: {str(e)}")
+
 def main():
+    capture_client_info()
     # Initialize shortener
     shortener = URLShortener()
+
+    # Check for redirect parameter
+    params = st.experimental_get_query_params()
+    if 'r' in params:
+        short_code = params['r'][0]
+        shortener.handle_redirect(short_code)
+        return
 
     # Get all campaigns data once at the start
     all_campaigns = shortener.db.get_all_urls()
