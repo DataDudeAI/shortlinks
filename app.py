@@ -27,8 +27,27 @@ st.set_page_config(
     page_title="Campaign Dashboard",
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
+    menu_items={
+        'Get Help': 'https://github.com/yourusername/shortlinks',
+        'Report a bug': "https://github.com/yourusername/shortlinks/issues",
+        'About': "# Campaign Dashboard\nA powerful URL shortener and campaign management tool."
+    }
 )
+
+# Set dark theme
+st.markdown("""
+    <script>
+        var observer = new MutationObserver(function(mutations) {
+            if (document.querySelector('.stApp')) {
+                document.querySelector('.stApp').classList.add('dark');
+                observer.disconnect();
+            }
+        });
+        
+        observer.observe(document, {childList: true, subtree: true});
+    </script>
+""", unsafe_allow_html=True)
 
 # Load styles once at the start
 st.markdown(load_ui_styles(), unsafe_allow_html=True)
