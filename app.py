@@ -617,14 +617,8 @@ def main():
 
     # Main Header with Stats
     st.markdown("""
-        <div class="header-accent">
-            <span>🎯</span>
-            <span style="background: linear-gradient(135deg, #00ff88 0%, #00bfff 100%); 
-                     -webkit-background-clip: text;
-                     -webkit-text-fill-color: transparent;
-                     font-weight: 700;">
-                Campaign Dashboard
-            </span>
+        <div class="main-header">
+            <h1>Campaign Dashboard</h1>
         </div>
     """, unsafe_allow_html=True)
 
