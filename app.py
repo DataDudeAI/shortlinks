@@ -11,6 +11,7 @@ from datetime import datetime
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import json
 
 # Setup logging
 logging.basicConfig(
@@ -236,78 +237,153 @@ class URLShortener:
         st.number_input("Default Link Expiry (days)", value=30)
 
     def render_active_campaigns(self):
-        """Display active campaigns in a modern table"""
+        """Display active campaigns in a modern table view"""
         campaigns = self.db.get_all_urls()  # Get all campaigns
         
         if not campaigns:
             st.info("No active campaigns yet. Create your first campaign above!")
             return
-        
-        # Filter and Search
+
+        # Create DataFrame for better table display
+        df = pd.DataFrame([
+            {
+                'Campaign Name': c.get('campaign_name', c['short_code']),
+                'Original URL': c['original_url'],
+                'Short URL': f"{BASE_URL}?r={c['short_code']}",
+                'Created': datetime.strptime(c['created_at'], '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d'),
+                'Total Clicks': c['total_clicks'],
+                'Unique Clicks': self.db.get_unique_clicks_count(c['short_code']),
+                'Last Click': self.db.get_last_click_date(c['short_code']).strftime('%Y-%m-%d') if self.db.get_last_click_date(c['short_code']) else "Never",
+                'Status': 'Active',
+                'Actions': c['short_code']  # We'll use this for action buttons
+            } for c in campaigns
+        ])
+
+        # Add filters above the table
         col1, col2, col3 = st.columns([2,1,1])
         with col1:
-            search = st.text_input("🔍 Search campaigns", placeholder="Search by name or URL...")
+            search = st.text_input("🔍 Search", placeholder="Search campaigns...")
         with col2:
-            campaign_filter = st.multiselect("Campaign Type", list(CAMPAIGN_TYPES.keys()))
+            status_filter = st.selectbox("Status", ["All", "Active", "Inactive"])
         with col3:
-            sort_by = st.selectbox("Sort by", ["Newest", "Most Clicks", "Name"])
-        
-        # Filter campaigns
+            sort_by = st.selectbox("Sort by", ["Created", "Clicks", "Campaign Name"])
+
+        # Apply filters
         if search:
-            campaigns = [c for c in campaigns if search.lower() in c['original_url'].lower() or 
-                        (c.get('campaign_name') and search.lower() in c['campaign_name'].lower())]
-        if campaign_filter:
-            campaigns = [c for c in campaigns if c.get('campaign_type') in campaign_filter]
+            df = df[
+                df['Campaign Name'].str.contains(search, case=False) |
+                df['Original URL'].str.contains(search, case=False) |
+                df['Short URL'].str.contains(search, case=False)
+            ]
+
+        # Sort DataFrame
+        if sort_by == "Clicks":
+            df = df.sort_values('Total Clicks', ascending=False)
+        elif sort_by == "Campaign Name":
+            df = df.sort_values('Campaign Name')
+        else:  # Created
+            df = df.sort_values('Created', ascending=False)
+
+        # Display table with custom formatting
+        st.markdown("### Your Campaign Links")
         
-        # Sort campaigns
-        if sort_by == "Most Clicks":
-            campaigns.sort(key=lambda x: x['total_clicks'], reverse=True)
-        elif sort_by == "Name":
-            campaigns.sort(key=lambda x: x.get('campaign_name', '').lower())
-        else:  # Newest
-            campaigns.sort(key=lambda x: x['created_at'], reverse=True)
-        
-        # Display campaigns
-        for campaign in campaigns:
-            with st.container():
-                cols = st.columns([3, 2, 2, 1])
-                with cols[0]:
-                    if campaign.get('campaign_name'):
-                        st.markdown(f"### {campaign['campaign_name']}")
-                    else:
-                        st.markdown(f"### {campaign['short_code']}")
-                    st.markdown(f"Original URL: `{campaign['original_url'][:50]}...`")
-                    shortened_url = f"{BASE_URL}?r={campaign['short_code']}"
-                    st.code(shortened_url)
-                with cols[1]:
-                    st.metric("Clicks", campaign['total_clicks'])
-                    unique_clicks = self.db.get_unique_clicks_count(campaign['short_code'])
-                    st.metric("Unique Visitors", unique_clicks)
-                with cols[2]:
-                    created_date = datetime.strptime(campaign['created_at'], '%Y-%m-%d %H:%M:%S')
-                    st.metric("Created", created_date.strftime('%Y-%m-%d'))
-                    last_click = self.db.get_last_click_date(campaign['short_code'])
-                    st.metric("Last Click", last_click.strftime('%Y-%m-%d') if last_click else "Never")
-                with cols[3]:
-                    # Action buttons
-                    if st.button("📊", key=f"stats_{campaign['short_code']}"):
-                        st.session_state.selected_campaign = campaign['short_code']
-                        stats = self.db.get_campaign_stats(campaign['short_code'])
+        # Use AgGrid or custom styled dataframe
+        st.dataframe(
+            df,
+            column_config={
+                "Campaign Name": st.column_config.TextColumn(
+                    "Campaign Name",
+                    width="medium",
+                ),
+                "Original URL": st.column_config.LinkColumn(
+                    "Original URL",
+                    width="medium",
+                ),
+                "Short URL": st.column_config.LinkColumn(
+                    "Short URL",
+                    width="medium",
+                    help="Click to copy"
+                ),
+                "Total Clicks": st.column_config.NumberColumn(
+                    "Clicks",
+                    help="Total number of clicks"
+                ),
+                "Unique Clicks": st.column_config.NumberColumn(
+                    "Unique",
+                    help="Unique visitors"
+                ),
+                "Created": st.column_config.DateColumn(
+                    "Created",
+                    format="YYYY-MM-DD"
+                ),
+                "Last Click": st.column_config.DateColumn(
+                    "Last Click",
+                    format="YYYY-MM-DD"
+                ),
+                "Status": st.column_config.TextColumn(
+                    "Status",
+                    width="small"
+                )
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+
+        # Action buttons below each row
+        for _, row in df.iterrows():
+            with st.expander(f"Actions for {row['Campaign Name']}", expanded=False):
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    if st.button("📊 Analytics", key=f"stats_{row['Actions']}"):
+                        stats = self.db.get_campaign_stats(row['Actions'])
                         st.json(stats)
-                    
-                    if st.button("✏️", key=f"edit_{campaign['short_code']}"):
-                        st.session_state.editing_campaign = campaign['short_code']
-                        self.render_campaign_editor(campaign)
-                    
-                    if st.button("🗑️", key=f"delete_{campaign['short_code']}"):
-                        if st.button("Confirm Delete", key=f"confirm_delete_{campaign['short_code']}"):
-                            if self.db.delete_campaign(campaign['short_code']):
+                with col2:
+                    if st.button("✏️ Edit", key=f"edit_{row['Actions']}"):
+                        st.session_state.editing_campaign = row['Actions']
+                        campaign_details = self.db.get_campaign_details(row['Actions'])
+                        if campaign_details:
+                            self.render_campaign_editor(campaign_details)
+                with col3:
+                    if st.button("🔗 Copy URL", key=f"copy_{row['Actions']}"):
+                        st.code(row['Short URL'])
+                        st.toast("URL copied to clipboard!")
+                with col4:
+                    if st.button("🗑️ Delete", key=f"delete_{row['Actions']}"):
+                        if st.button("Confirm Delete", key=f"confirm_delete_{row['Actions']}"):
+                            if self.db.delete_campaign(row['Actions']):
                                 st.success("Campaign deleted successfully!")
                                 st.rerun()
-                    
-                    # Test link button
-                    st.markdown(f"[🔗 Test]({shortened_url})")
-                st.divider()
+
+        # Add export options
+        st.markdown("### Export Data")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📥 Export to CSV"):
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    "Download CSV",
+                    csv,
+                    "campaign_data.csv",
+                    "text/csv",
+                    key='download-csv'
+                )
+        with col2:
+            if st.button("📊 Export Analytics"):
+                # Create detailed analytics export
+                analytics_data = {
+                    'campaign_data': df.to_dict('records'),
+                    'export_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'total_campaigns': len(df),
+                    'total_clicks': df['Total Clicks'].sum()
+                }
+                json_str = json.dumps(analytics_data, indent=2)
+                st.download_button(
+                    "Download Analytics JSON",
+                    json_str,
+                    "campaign_analytics.json",
+                    "application/json",
+                    key='download-json'
+                )
 
     def render_campaign_editor(self, campaign: Dict[str, Any]):
         """Render campaign editing interface"""
