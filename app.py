@@ -58,7 +58,7 @@ if st.session_state.theme == 'dark':
         </script>
     """, unsafe_allow_html=True)
 
-BASE_URL = "http://localhost:8501"  # For local development
+BASE_URL = "https://shortlinksnandan.streamlit.app/"  # For local development
 
 CAMPAIGN_TYPES = {
     "Social Media": "🔵",
