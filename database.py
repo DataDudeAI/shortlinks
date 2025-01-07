@@ -543,13 +543,22 @@ class Database:
         finally:
             conn.close() 
 
-    def get_recent_links(self, limit: int = 3) -> List[Dict[str, Any]]:
-        """Get the most recent shortened URLs"""
+    def get_recent_links(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get the most recent shortened URLs with full details"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
             c.execute('''
-                SELECT original_url, short_code, created_at, total_clicks 
+                SELECT 
+                    original_url,
+                    short_code,
+                    campaign_name,
+                    campaign_type,
+                    created_at,
+                    total_clicks,
+                    utm_source,
+                    utm_medium,
+                    utm_campaign
                 FROM urls 
                 ORDER BY created_at DESC 
                 LIMIT ?
@@ -560,10 +569,18 @@ class Database:
                 results.append({
                     'original_url': row[0],
                     'short_code': row[1],
-                    'created_at': row[2],
-                    'total_clicks': row[3]
+                    'campaign_name': row[2],
+                    'campaign_type': row[3],
+                    'created_at': row[4],
+                    'total_clicks': row[5],
+                    'utm_source': row[6],
+                    'utm_medium': row[7],
+                    'utm_campaign': row[8]
                 })
             return results
+        except Exception as e:
+            logger.error(f"Error getting recent links: {str(e)}")
+            return []
         finally:
             conn.close()
 
