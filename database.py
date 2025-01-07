@@ -6,6 +6,7 @@ import logging
 import pandas as pd
 import json
 import random
+import streamlit as st
 
 logger = logging.getLogger(__name__)
 
@@ -569,24 +570,15 @@ class Database:
                 now = click_date.strftime('%Y-%m-%d %H:%M:%S')
             else:
                 now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            
-            # Update click count in urls table
-            try:
-                c.execute('''
-                    UPDATE urls 
-                    SET total_clicks = total_clicks + 1,
-                        last_clicked = ?
-                    WHERE short_code = ?
-                ''', (now, short_code))
-            except sqlite3.OperationalError as e:
-                if "no such column: last_clicked" in str(e):
-                    # If last_clicked doesn't exist, just update total_clicks
-                    c.execute('''
-                        UPDATE urls 
-                        SET total_clicks = total_clicks + 1
-                        WHERE short_code = ?
-                    ''', (short_code,))
-            
+
+            # Update click count and last clicked timestamp
+            c.execute('''
+                UPDATE urls 
+                SET total_clicks = total_clicks + 1,
+                    last_clicked = ?
+                WHERE short_code = ?
+            ''', (now, short_code))
+
             # Add analytics entry
             c.execute('''
                 INSERT INTO analytics (
@@ -604,17 +596,18 @@ class Database:
             ''', (
                 short_code,
                 now,
-                f"192.168.{random.randint(1, 255)}.{random.randint(1, 255)}" if simulate_dates else None,
-                'Mozilla/5.0 (Demo Browser)' if simulate_dates else None,
-                'demo.referrer.com' if simulate_dates else None,
-                random.choice(['US', 'UK', 'IN', 'CA', 'AU']) if simulate_dates else None,
-                random.choice(['New York', 'London', 'Mumbai', 'Toronto', 'Sydney']) if simulate_dates else None,
-                random.choice(['Mobile', 'Desktop', 'Tablet']) if simulate_dates else None,
-                random.choice(['Chrome', 'Firefox', 'Safari', 'Edge']) if simulate_dates else None,
-                random.choice(['Windows', 'MacOS', 'iOS', 'Android']) if simulate_dates else None
+                st.session_state.get('client_ip', 'Unknown'),
+                st.session_state.get('user_agent', 'Unknown'),
+                st.session_state.get('referrer', 'Direct'),
+                st.session_state.get('country', 'Unknown'),
+                st.session_state.get('city', 'Unknown'),
+                st.session_state.get('device_type', 'Unknown'),
+                st.session_state.get('browser', 'Unknown'),
+                st.session_state.get('os', 'Unknown')
             ))
             
             conn.commit()
+            logger.info(f"Click tracked for {short_code}")
             return True
         except Exception as e:
             logger.error(f"Error tracking click for {short_code}: {str(e)}")
