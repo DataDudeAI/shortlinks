@@ -23,8 +23,7 @@ class UI:
     def __init__(self, url_shortener):
         """Initialize UI with URL shortener instance"""
         self.url_shortener = url_shortener
-        # Load UI styles
-        st.markdown(load_ui_styles(), unsafe_allow_html=True)
+        # Remove any style loading here if it exists
 
     def generate_qr_code(self, url: str, color: str = '#000000', bg_color: str = '#FFFFFF') -> bytes:
         """Generate QR code for URL with custom colors"""
