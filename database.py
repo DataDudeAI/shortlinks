@@ -1,9 +1,11 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 import os
 import logging
 import pandas as pd
+import json
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +19,22 @@ class Database:
         # Check if database exists
         db_exists = os.path.exists(self.db_path)
         
-        # Create tables only if database doesn't exist
         if not db_exists:
             logger.info("Creating new database...")
-            self.create_tables()
+            self.initialize_database()
         else:
-            logger.info("Using existing database")
+            # If database exists but tables are empty, initialize
+            conn = self.get_connection()
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
+            table_count = c.fetchone()[0]
+            conn.close()
+            
+            if table_count == 0:
+                logger.info("Database exists but empty. Initializing...")
+                self.initialize_database()
+            else:
+                logger.info("Using existing database")
 
     def get_connection(self):
         """Get database connection"""
@@ -57,6 +69,7 @@ class Database:
                         utm_content TEXT,
                         utm_term TEXT,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        last_clicked DATETIME,
                         total_clicks INTEGER DEFAULT 0,
                         is_active BOOLEAN DEFAULT 1,
                         UNIQUE(campaign_name)
@@ -69,7 +82,30 @@ class Database:
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         short_code TEXT NOT NULL,
                         clicked_at DATETIME NOT NULL,
+                        ip_address TEXT,
+                        user_agent TEXT,
+                        referrer TEXT,
+                        country TEXT,
+                        city TEXT,
+                        device_type TEXT,
+                        browser TEXT,
+                        os TEXT,
                         FOREIGN KEY (short_code) REFERENCES urls (short_code)
+                    )
+                ''')
+                
+                # Create organizations table
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS organizations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        org_id TEXT UNIQUE NOT NULL,
+                        name TEXT NOT NULL,
+                        website TEXT,
+                        industry TEXT,
+                        social_media_config TEXT,
+                        ad_networks_config TEXT,
+                        settings TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 ''')
                 
@@ -516,40 +552,69 @@ class Database:
         finally:
             conn.close() 
 
-    def increment_clicks(self, short_code: str) -> bool:
+    def increment_clicks(self, short_code: str, simulate_dates: bool = False) -> bool:
         """Track click with basic analytics"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            
-            # Get current click count
-            c.execute('SELECT total_clicks FROM urls WHERE short_code = ?', (short_code,))
-            result = c.fetchone()
-            if not result:
-                logger.error(f"No URL found for short code: {short_code}")
-                return False
-            
-            current_clicks = result[0]
+            # If simulating data, generate a random past date
+            if simulate_dates:
+                c.execute('SELECT created_at FROM urls WHERE short_code = ?', (short_code,))
+                created_at = c.fetchone()[0]
+                created_date = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S')
+                now = datetime.now()
+                time_diff = (now - created_date).total_seconds()
+                random_seconds = random.uniform(0, time_diff)
+                click_date = created_date + timedelta(seconds=random_seconds)
+                now = click_date.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             # Update click count in urls table
-            c.execute('''
-                UPDATE urls 
-                SET total_clicks = total_clicks + 1,
-                    last_clicked = datetime('now')
-                WHERE short_code = ?
-            ''', (short_code,))
+            try:
+                c.execute('''
+                    UPDATE urls 
+                    SET total_clicks = total_clicks + 1,
+                        last_clicked = ?
+                    WHERE short_code = ?
+                ''', (now, short_code))
+            except sqlite3.OperationalError as e:
+                if "no such column: last_clicked" in str(e):
+                    # If last_clicked doesn't exist, just update total_clicks
+                    c.execute('''
+                        UPDATE urls 
+                        SET total_clicks = total_clicks + 1
+                        WHERE short_code = ?
+                    ''', (short_code,))
             
             # Add analytics entry
             c.execute('''
                 INSERT INTO analytics (
                     short_code,
-                    clicked_at
-                ) VALUES (?, ?)
-            ''', (short_code, now))
+                    clicked_at,
+                    ip_address,
+                    user_agent,
+                    referrer,
+                    country,
+                    city,
+                    device_type,
+                    browser,
+                    os
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                short_code,
+                now,
+                f"192.168.{random.randint(1, 255)}.{random.randint(1, 255)}" if simulate_dates else None,
+                'Mozilla/5.0 (Demo Browser)' if simulate_dates else None,
+                'demo.referrer.com' if simulate_dates else None,
+                random.choice(['US', 'UK', 'IN', 'CA', 'AU']) if simulate_dates else None,
+                random.choice(['New York', 'London', 'Mumbai', 'Toronto', 'Sydney']) if simulate_dates else None,
+                random.choice(['Mobile', 'Desktop', 'Tablet']) if simulate_dates else None,
+                random.choice(['Chrome', 'Firefox', 'Safari', 'Edge']) if simulate_dates else None,
+                random.choice(['Windows', 'MacOS', 'iOS', 'Android']) if simulate_dates else None
+            ))
             
             conn.commit()
-            logger.info(f"Click tracked for {short_code}: Total clicks now {current_clicks + 1}")
             return True
         except Exception as e:
             logger.error(f"Error tracking click for {short_code}: {str(e)}")
@@ -671,12 +736,6 @@ class Database:
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Check if campaign name already exists
-            c.execute('SELECT id FROM urls WHERE campaign_name = ?', (campaign_name,))
-            if c.fetchone():
-                logger.error(f"Campaign name already exists: {campaign_name}")
-                return False
-            
             # Insert URL with campaign details
             c.execute('''
                 INSERT INTO urls (
@@ -964,5 +1023,536 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting recent clicks: {str(e)}")
             return 0
+        finally:
+            conn.close()
+
+    def save_organization(self, org_data: Dict[str, Any]) -> bool:
+        """Save organization data to database"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Check if organization exists
+            c.execute('SELECT id FROM organizations WHERE org_id = ?', (org_data['org_id'],))
+            if c.fetchone():
+                logger.error(f"Organization already exists: {org_data['org_id']}")
+                return False
+            
+            # Insert organization data
+            c.execute('''
+                INSERT INTO organizations (
+                    org_id,
+                    name,
+                    website,
+                    industry,
+                    social_media_config,
+                    ad_networks_config,
+                    settings,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                org_data['org_id'],
+                org_data['name'],
+                org_data['website'],
+                org_data['industry'],
+                json.dumps(org_data['social_media']),
+                json.dumps(org_data['ad_networks']),
+                json.dumps(org_data['settings']),
+                org_data['created_at']
+            ))
+            
+            conn.commit()
+            logger.info(f"Successfully saved organization: {org_data['name']}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving organization: {str(e)}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def update_organization(self, org_id: str, update_data: Dict[str, Any]) -> bool:
+        """Update organization settings"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Build update query
+            update_fields = []
+            values = []
+            for key, value in update_data.items():
+                if key in ['name', 'website', 'industry', 'social_media_config', 
+                          'ad_networks_config', 'settings']:
+                    update_fields.append(f"{key} = ?")
+                    values.append(json.dumps(value) if isinstance(value, dict) else value)
+            
+            if not update_fields:
+                return False
+            
+            # Add org_id to values
+            values.append(org_id)
+            
+            # Execute update
+            query = f'''
+                UPDATE organizations 
+                SET {", ".join(update_fields)}
+                WHERE org_id = ?
+            '''
+            c.execute(query, values)
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating organization: {str(e)}")
+            return False
+        finally:
+            conn.close()
+
+    def get_organization(self, org_id: str) -> Optional[Dict[str, Any]]:
+        """Get organization details"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('''
+                SELECT 
+                    org_id,
+                    name,
+                    website,
+                    industry,
+                    social_media_config,
+                    ad_networks_config,
+                    settings,
+                    created_at
+                FROM organizations 
+                WHERE org_id = ?
+            ''', (org_id,))
+            
+            result = c.fetchone()
+            if not result:
+                return None
+            
+            return {
+                'org_id': result[0],
+                'name': result[1],
+                'website': result[2],
+                'industry': result[3],
+                'social_media': json.loads(result[4]),
+                'ad_networks': json.loads(result[5]),
+                'settings': json.loads(result[6]),
+                'created_at': result[7]
+            }
+        finally:
+            conn.close()
+
+    def get_all_organizations(self) -> List[Dict[str, Any]]:
+        """Get all organizations"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('''
+                SELECT 
+                    org_id,
+                    name,
+                    website,
+                    industry,
+                    social_media_config,
+                    ad_networks_config,
+                    settings,
+                    created_at
+                FROM organizations
+            ''')
+            
+            results = []
+            for row in c.fetchall():
+                results.append({
+                    'org_id': row[0],
+                    'name': row[1],
+                    'website': row[2],
+                    'industry': row[3],
+                    'social_media': json.loads(row[4]) if row[4] else {},
+                    'ad_networks': json.loads(row[5]) if row[5] else {},
+                    'settings': json.loads(row[6]) if row[6] else {},
+                    'created_at': row[7]
+                })
+            return results
+        except Exception as e:
+            logger.error(f"Error getting organizations: {str(e)}")
+            return []
+        finally:
+            conn.close()
+
+    def insert_demo_data(self) -> bool:
+        """Insert demo data for organizations and campaigns"""
+        try:
+            # Demo Organizations
+            demo_orgs = [
+                {
+                    'org_id': 'demo_org_1',
+                    'name': 'TechStart Solutions',
+                    'website': 'https://techstart.demo',
+                    'industry': 'Technology',
+                    'social_media': {
+                        'facebook': {
+                            'app_id': 'demo_fb_id_1',
+                            'page_id': 'techstart_page',
+                            'access_token': 'demo_token_1'
+                        },
+                        'twitter': {
+                            'api_key': 'demo_twitter_1',
+                            'access_token': 'demo_token_2'
+                        }
+                    },
+                    'ad_networks': {
+                        'google_ads': {
+                            'customer_id': '123-456-7890',
+                            'developer_token': 'demo_dev_token_1'
+                        },
+                        'facebook_ads': {
+                            'ad_account_id': 'act_123456'
+                        }
+                    }
+                },
+                {
+                    'org_id': 'demo_org_2',
+                    'name': 'EcoShop Retail',
+                    'website': 'https://ecoshop.demo',
+                    'industry': 'E-commerce',
+                    'social_media': {
+                        'facebook': {
+                            'app_id': 'demo_fb_id_2',
+                            'page_id': 'ecoshop_page'
+                        },
+                        'instagram': {
+                            'client_id': 'demo_insta_1'
+                        }
+                    },
+                    'ad_networks': {
+                        'facebook_ads': {
+                            'ad_account_id': 'act_789012'
+                        }
+                    }
+                }
+            ]
+
+            # Demo Campaigns
+            demo_campaigns = [
+                {
+                    'url': 'https://techstart.demo/summer-sale',
+                    'campaign_name': 'Demo Campaign 1',
+                    'short_code': 'demo1',
+                    'campaign_type': 'Social Media',
+                    'utm_params': {
+                        'utm_source': 'facebook',
+                        'utm_medium': 'social',
+                        'utm_campaign': 'summer_sale'
+                    },
+                    'total_clicks': 156,
+                    'org_id': 'demo_org_1'
+                },
+                {
+                    'url': 'https://techstart.demo/webinar',
+                    'campaign_name': 'Demo Campaign 2',
+                    'short_code': 'demo2',
+                    'campaign_type': 'Email',
+                    'utm_params': {
+                        'utm_source': 'newsletter',
+                        'utm_medium': 'email',
+                        'utm_campaign': 'tech_webinar'
+                    },
+                    'total_clicks': 89,
+                    'org_id': 'demo_org_1'
+                },
+                {
+                    'url': 'https://ecoshop.demo/winter-collection',
+                    'campaign_name': 'Demo Campaign 3',
+                    'short_code': 'demo3',
+                    'campaign_type': 'Paid Ads',
+                    'utm_params': {
+                        'utm_source': 'instagram',
+                        'utm_medium': 'cpc',
+                        'utm_campaign': 'winter_2024'
+                    },
+                    'total_clicks': 234,
+                    'org_id': 'demo_org_2'
+                },
+                {
+                    'url': 'https://techstart.demo/product-launch',
+                    'campaign_name': 'Demo Campaign 4',
+                    'short_code': 'demo4',
+                    'campaign_type': 'Social Media',
+                    'utm_params': {
+                        'utm_source': 'linkedin',
+                        'utm_medium': 'social',
+                        'utm_campaign': 'product_launch'
+                    },
+                    'total_clicks': 312,
+                    'org_id': 'demo_org_1'
+                },
+                {
+                    'url': 'https://techstart.demo/black-friday',
+                    'campaign_name': 'Demo Campaign 5',
+                    'short_code': 'demo5',
+                    'campaign_type': 'Paid Ads',
+                    'utm_params': {
+                        'utm_source': 'google',
+                        'utm_medium': 'cpc',
+                        'utm_campaign': 'black_friday'
+                    },
+                    'total_clicks': 523,
+                    'org_id': 'demo_org_1'
+                },
+                {
+                    'url': 'https://ecoshop.demo/spring-collection',
+                    'campaign_name': 'Demo Campaign 6',
+                    'short_code': 'demo6',
+                    'campaign_type': 'Email',
+                    'utm_params': {
+                        'utm_source': 'newsletter',
+                        'utm_medium': 'email',
+                        'utm_campaign': 'spring_2024'
+                    },
+                    'total_clicks': 178,
+                    'org_id': 'demo_org_2'
+                },
+                {
+                    'url': 'https://ecoshop.demo/summer-deals',
+                    'campaign_name': 'Demo Campaign 7',
+                    'short_code': 'demo7',
+                    'campaign_type': 'Social Media',
+                    'utm_params': {
+                        'utm_source': 'instagram',
+                        'utm_medium': 'social',
+                        'utm_campaign': 'summer_deals'
+                    },
+                    'total_clicks': 445,
+                    'org_id': 'demo_org_2'
+                },
+                {
+                    'url': 'https://techstart.demo/cyber-monday',
+                    'campaign_name': 'Demo Campaign 8',
+                    'short_code': 'demo8',
+                    'campaign_type': 'Paid Ads',
+                    'utm_params': {
+                        'utm_source': 'facebook',
+                        'utm_medium': 'cpc',
+                        'utm_campaign': 'cyber_monday'
+                    },
+                    'total_clicks': 678,
+                    'org_id': 'demo_org_1'
+                },
+                {
+                    'url': 'https://ecoshop.demo/flash-sale',
+                    'campaign_name': 'Demo Campaign 9',
+                    'short_code': 'demo9',
+                    'campaign_type': 'Email',
+                    'utm_params': {
+                        'utm_source': 'mailchimp',
+                        'utm_medium': 'email',
+                        'utm_campaign': 'flash_sale'
+                    },
+                    'total_clicks': 234,
+                    'org_id': 'demo_org_2'
+                },
+                {
+                    'url': 'https://techstart.demo/new-features',
+                    'campaign_name': 'Demo Campaign 10',
+                    'short_code': 'demo10',
+                    'campaign_type': 'Blog',
+                    'utm_params': {
+                        'utm_source': 'blog',
+                        'utm_medium': 'organic',
+                        'utm_campaign': 'features_launch'
+                    },
+                    'total_clicks': 189,
+                    'org_id': 'demo_org_1'
+                }
+            ]
+
+            # Insert organizations
+            for org in demo_orgs:
+                org['created_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                org['settings'] = {'auto_posting': True, 'default_platforms': ['facebook', 'twitter']}
+                self.save_organization(org)
+
+            # Insert campaigns
+            for campaign in demo_campaigns:
+                self.save_campaign_url(
+                    url=campaign['url'],
+                    short_code=campaign['short_code'],
+                    campaign_name=campaign['campaign_name'],
+                    campaign_type=campaign['campaign_type'],
+                    utm_params=campaign['utm_params']
+                )
+
+                # Simulate clicks with dates
+                for _ in range(campaign['total_clicks']):
+                    self.increment_clicks(campaign['short_code'], simulate_dates=True)
+
+            return True
+        except Exception as e:
+            logger.error(f"Error inserting demo data: {str(e)}")
+            return False
+
+    def ensure_demo_data(self):
+        """Check if demo data exists and insert if not"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Check if demo data exists
+            c.execute('SELECT COUNT(*) FROM organizations WHERE org_id LIKE "demo_%"')
+            org_count = c.fetchone()[0]
+            
+            c.execute('SELECT COUNT(*) FROM urls WHERE short_code LIKE "demo%"')
+            campaign_count = c.fetchone()[0]
+            
+            if org_count == 0 and campaign_count == 0:
+                logger.info("No demo data found. Inserting demo data...")
+                return self.insert_demo_data()
+            else:
+                logger.info("Demo data already exists")
+                return True
+        except Exception as e:
+            logger.error(f"Error checking demo data: {str(e)}")
+            return False
+        finally:
+            conn.close()
+
+    def initialize_database(self):
+        """Initialize database with tables and demo data"""
+        try:
+            # Force drop and recreate database
+            if os.path.exists(self.db_path):
+                os.remove(self.db_path)
+                logger.info("Removed existing database")
+            
+            # Create tables
+            self.create_tables()
+            logger.info("Created new tables")
+            
+            # Insert demo data
+            success = self.insert_demo_data()
+            if success:
+                logger.info("Database initialized successfully with demo data")
+                
+                # Verify data
+                conn = self.get_connection()
+                c = conn.cursor()
+                
+                c.execute("SELECT COUNT(*), SUM(total_clicks) FROM urls")
+                url_stats = c.fetchone()
+                logger.info(f"Verified: {url_stats[0]} URLs with {url_stats[1]} total clicks")
+                
+                c.execute("SELECT COUNT(*) FROM analytics")
+                analytics_count = c.fetchone()[0]
+                logger.info(f"Verified: {analytics_count} analytics entries")
+                
+                conn.close()
+                return True
+            else:
+                logger.error("Failed to insert demo data")
+                return False
+        except Exception as e:
+            logger.error(f"Error initializing database: {str(e)}")
+            return False
+
+    def get_analytics_summary(self, short_code: str = None, days: int = 30) -> Dict[str, Any]:
+        """Get comprehensive analytics summary"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            where_clause = "WHERE clicked_at >= datetime('now', ?) "
+            params = [f'-{days} days']
+            
+            if short_code:
+                where_clause += "AND short_code = ? "
+                params.append(short_code)
+
+            # Get device breakdown
+            c.execute(f'''
+                SELECT device_type, COUNT(*) as count
+                FROM analytics
+                {where_clause}
+                GROUP BY device_type
+            ''', params)
+            device_stats = dict(c.fetchall())
+
+            # Get browser breakdown
+            c.execute(f'''
+                SELECT browser, COUNT(*) as count
+                FROM analytics
+                {where_clause}
+                GROUP BY browser
+            ''', params)
+            browser_stats = dict(c.fetchall())
+
+            # Get country breakdown
+            c.execute(f'''
+                SELECT country, COUNT(*) as count
+                FROM analytics
+                {where_clause}
+                GROUP BY country
+                ORDER BY count DESC
+                LIMIT 5
+            ''', params)
+            country_stats = dict(c.fetchall())
+
+            # Get hourly breakdown
+            c.execute(f'''
+                SELECT strftime('%H', clicked_at) as hour,
+                       COUNT(*) as clicks
+                FROM analytics
+                {where_clause}
+                GROUP BY hour
+                ORDER BY hour
+            ''', params)
+            hourly_stats = dict(c.fetchall())
+
+            # Get daily breakdown
+            c.execute(f'''
+                SELECT date(clicked_at) as day,
+                       COUNT(*) as clicks
+                FROM analytics
+                {where_clause}
+                GROUP BY day
+                ORDER BY day
+            ''', params)
+            daily_stats = dict(c.fetchall())
+
+            return {
+                'device_breakdown': device_stats,
+                'browser_breakdown': browser_stats,
+                'country_breakdown': country_stats,
+                'hourly_stats': hourly_stats,
+                'daily_stats': daily_stats
+            }
+        finally:
+            conn.close()
+
+    def get_campaign_performance(self, short_code: str = None) -> pd.DataFrame:
+        """Get detailed campaign performance metrics"""
+        conn = self.get_connection()
+        try:
+            query = '''
+                SELECT 
+                    u.campaign_name,
+                    u.campaign_type,
+                    u.total_clicks,
+                    COUNT(DISTINCT a.ip_address) as unique_visitors,
+                    COUNT(DISTINCT a.country) as countries_reached,
+                    COUNT(DISTINCT date(a.clicked_at)) as active_days,
+                    u.created_at,
+                    MAX(a.clicked_at) as last_activity,
+                    ROUND(CAST(COUNT(DISTINCT a.ip_address) AS FLOAT) / 
+                          CAST(COUNT(*) AS FLOAT) * 100, 2) as engagement_rate
+                FROM urls u
+                LEFT JOIN analytics a ON u.short_code = a.short_code
+            '''
+            
+            if short_code:
+                query += ' WHERE u.short_code = ?'
+                df = pd.read_sql_query(query, conn, params=(short_code,))
+            else:
+                query += ' GROUP BY u.short_code'
+                df = pd.read_sql_query(query, conn)
+            
+            return df
         finally:
             conn.close()
