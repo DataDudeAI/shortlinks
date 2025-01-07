@@ -532,22 +532,40 @@ def main():
             </span>
         </div>
     """, unsafe_allow_html=True)
-    
-    # Stats row
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        active_links = len(shortener.db.get_all_urls())
-        st.metric("🔗 Active Links", active_links, f"+{active_links}")
-    with col2:
-        total_clicks = sum(url['total_clicks'] for url in shortener.db.get_all_urls())
-        st.metric("👆 Total Clicks", f"{total_clicks:,}", "+15%")
-    with col3:
-        st.metric("📈 Conversion Rate", "4.2%", "+0.8%")
-    with col4:
-        st.metric("🎯 Active Campaigns", "5", "+2")
 
-    # Tabs
-    tab1, tab2, tab3 = st.tabs(["🎯 Create & Manage", "📊 Analytics", "⚙️ Bulk Operations"])
+    # Stats row at the top of dashboard
+    col1, col2, col3, col4 = st.columns(4)
+    
+    # Get all campaigns for stats
+    all_campaigns = shortener.db.get_all_urls()
+    active_campaigns = [c for c in all_campaigns if c.get('is_active', True)]
+    total_clicks = shortener.db.get_total_clicks()  # Use new method
+    
+    with col1:
+        st.metric("🔗 Active Campaigns", 
+                 len(active_campaigns),
+                 f"+{len(active_campaigns)}")
+    
+    with col2:
+        st.metric("👆 Total Clicks", 
+                 f"{total_clicks:,}", 
+                 f"+{total_clicks}")
+    
+    with col3:
+        avg_clicks = total_clicks / len(active_campaigns) if active_campaigns else 0
+        st.metric("📊 Avg. Clicks/Campaign", 
+                 f"{avg_clicks:.1f}",
+                 "+0.8%")
+    
+    with col4:
+        # Get recent clicks (last 24 hours)
+        recent_clicks = shortener.db.get_recent_clicks_count(hours=24)
+        st.metric("🎯 Recent Activity", 
+                 f"{recent_clicks:,}", 
+                 f"+{recent_clicks}")
+
+    # Tabs for Create Campaign and Analytics
+    tab1, tab2 = st.tabs(["🎯 Create Campaign", "📊 Analytics"])
 
     with tab1:
         create_col, recent_col = st.columns([2, 1])
@@ -678,11 +696,318 @@ def main():
             shortener.render_recent_links()
 
     with tab2:
-        shortener.render_campaign_dashboard()
+        # Analytics content
+        st.markdown("### 📊 Campaign Analytics")
+        
+        # Analytics Overview
+        overview_cols = st.columns(4)
+        with overview_cols[0]:
+            st.metric("Total Campaigns", len(active_campaigns))
+        with overview_cols[1]:
+            st.metric("Total Clicks", total_clicks)
+        with overview_cols[2]:
+            conversion_rate = "4.2%" # You can calculate this based on your data
+            st.metric("Conversion Rate", conversion_rate, "+0.8%")
+        with overview_cols[3]:
+            engagement_rate = "12.5%" # You can calculate this based on your data
+            st.metric("Engagement Rate", engagement_rate, "+2.1%")
 
-    with tab3:
-        st.markdown("### Bulk Operations")
-        # Add your bulk operations code here
+        # Time Period Filter
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            date_range = st.date_input(
+                "Date Range",
+                value=[datetime.now().date(), datetime.now().date()],
+                key="analytics_date_range"
+            )
+        with col2:
+            selected_campaigns = st.multiselect(
+                "Select Campaigns",
+                options=[c['campaign_name'] for c in active_campaigns],
+                default=[active_campaigns[0]['campaign_name']] if active_campaigns else None,
+                key="analytics_campaign_select"
+            )
+
+        # Performance Charts
+        st.markdown("#### Campaign Performance")
+        chart_tabs = st.tabs(["Clicks", "Sources", "Locations", "Devices"])
+        
+        with chart_tabs[0]:
+            # Clicks Timeline
+            st.markdown("##### Click Distribution Over Time")
+            if selected_campaigns:
+                click_data = pd.concat([
+                    shortener.db.get_click_timeline(
+                        next(c['short_code'] for c in active_campaigns if c['campaign_name'] == campaign)
+                    ) 
+                    for campaign in selected_campaigns
+                ], axis=1)
+                click_data.columns = selected_campaigns
+                st.line_chart(click_data)
+            else:
+                st.info("Select campaigns to view click distribution")
+
+        with chart_tabs[1]:
+            # Traffic Sources
+            st.markdown("##### Traffic Sources")
+            source_data = {
+                'Source': ['Facebook', 'Twitter', 'LinkedIn', 'Direct', 'Other'],
+                'Clicks': [45, 25, 20, 15, 5]
+            }
+            source_df = pd.DataFrame(source_data)
+            st.bar_chart(source_df.set_index('Source'))
+
+        with chart_tabs[2]:
+            # Geographic Distribution
+            st.markdown("##### Geographic Distribution")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("Top Countries")
+                country_data = {
+                    'Country': ['USA', 'UK', 'India', 'Canada', 'Australia'],
+                    'Visits': [120, 80, 60, 40, 30]
+                }
+                st.dataframe(
+                    pd.DataFrame(country_data),
+                    hide_index=True,
+                    use_container_width=True
+                )
+            with col2:
+                st.markdown("Top Cities")
+                city_data = {
+                    'City': ['New York', 'London', 'Mumbai', 'Toronto', 'Sydney'],
+                    'Visits': [50, 40, 30, 20, 15]
+                }
+                st.dataframe(
+                    pd.DataFrame(city_data),
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+        with chart_tabs[3]:
+            # Device Analytics
+            st.markdown("##### Device & Browser Analytics")
+            device_col1, device_col2 = st.columns(2)
+            with device_col1:
+                st.markdown("Device Types")
+                device_data = {
+                    'Device': ['Mobile', 'Desktop', 'Tablet'],
+                    'Percentage': [60, 30, 10]
+                }
+                st.dataframe(
+                    pd.DataFrame(device_data),
+                    hide_index=True,
+                    use_container_width=True
+                )
+            with device_col2:
+                st.markdown("Browsers")
+                browser_data = {
+                    'Browser': ['Chrome', 'Safari', 'Firefox', 'Edge'],
+                    'Percentage': [45, 25, 20, 10]
+                }
+                st.dataframe(
+                    pd.DataFrame(browser_data),
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+        # Export Options
+        st.markdown("#### Export Analytics")
+        export_col1, export_col2, export_col3 = st.columns(3)
+        with export_col1:
+            st.download_button(
+                "📊 Export as CSV",
+                data="your_csv_data_here",
+                file_name="campaign_analytics.csv",
+                mime="text/csv"
+            )
+        with export_col2:
+            st.download_button(
+                "📑 Export as PDF",
+                data="your_pdf_data_here",
+                file_name="campaign_analytics.pdf",
+                mime="application/pdf"
+            )
+        with export_col3:
+            st.download_button(
+                "📋 Export as Excel",
+                data="your_excel_data_here",
+                file_name="campaign_analytics.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    # Campaign Management Section
+    st.markdown("### 📈 Active Campaigns")
+    
+    # Filters and search
+    col1, col2, col3 = st.columns([2,1,1])
+    with col1:
+        search = st.text_input("🔍 Search", placeholder="Search campaigns...")
+    with col2:
+        status_filter = st.selectbox("Status", ["All", "Active", "Inactive"])
+    with col3:
+        sort_by = st.selectbox("Sort by", ["Created", "Clicks", "Campaign Name"])
+
+    # Create DataFrame for campaigns
+    if active_campaigns:
+        df = pd.DataFrame([
+            {
+                'Campaign Name': c.get('campaign_name', c['short_code']),
+                'Original URL': c['original_url'],
+                'Short URL': f"{BASE_URL}?r={c['short_code']}",
+                'Created': datetime.strptime(c['created_at'], '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d'),
+                'Total Clicks': c['total_clicks'],
+                'Status': 'Active',
+                'Actions': c['short_code']
+            } for c in active_campaigns
+        ])
+
+        # Apply filters and sorting
+        if search:
+            df = df[df['Campaign Name'].str.contains(search, case=False)]
+        if sort_by == "Clicks":
+            df = df.sort_values('Total Clicks', ascending=False)
+        elif sort_by == "Campaign Name":
+            df = df.sort_values('Campaign Name')
+        else:
+            df = df.sort_values('Created', ascending=False)
+
+        # Display table
+        st.dataframe(
+            df,
+            column_config={
+                "Campaign Name": st.column_config.TextColumn("Campaign Name", width="medium"),
+                "Short URL": st.column_config.LinkColumn("Short URL", width="medium"),
+                "Total Clicks": st.column_config.NumberColumn("Clicks", format="%d"),
+                "Created": st.column_config.DateColumn("Created", format="MMM DD, YYYY"),
+                "Status": st.column_config.TextColumn("Status", width="small")
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+
+        # Campaign Actions and Settings
+        for _, row in df.iterrows():
+            with st.expander(f"🎯 Campaign: {row['Campaign Name']}", expanded=False):
+                settings_tab, analytics_tab, social_tab = st.tabs(["⚙️ Settings", "📊 Analytics", "🌐 Social Media"])
+                
+                with settings_tab:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("#### Campaign Settings")
+                        campaign_type = st.selectbox(
+                            "Campaign Type",
+                            options=list(CAMPAIGN_TYPES.keys()),
+                            key=f"type_{row['Actions']}"
+                        )
+                        utm_source = st.text_input(
+                            "UTM Source",
+                            value=row.get('utm_source', ''),
+                            key=f"source_{row['Actions']}"
+                        )
+                        utm_medium = st.text_input(
+                            "UTM Medium",
+                            value=row.get('utm_medium', ''),
+                            key=f"medium_{row['Actions']}"
+                        )
+                        
+                    with col2:
+                        st.markdown("#### Advanced Options")
+                        expiry_date = st.date_input(
+                            "Expiry Date",
+                            key=f"expiry_{row['Actions']}"
+                        )
+                        enable_retargeting = st.checkbox(
+                            "Enable Retargeting",
+                            key=f"retarget_{row['Actions']}"
+                        )
+                        enable_qr = st.checkbox(
+                            "Generate QR Code",
+                            key=f"qr_{row['Actions']}"
+                        )
+                    
+                    # Tags and Notes
+                    st.markdown("#### Additional Information")
+                    tags = st.text_input(
+                        "Tags (comma-separated)",
+                        value=row.get('tags', ''),
+                        key=f"tags_{row['Actions']}"
+                    )
+                    notes = st.text_area(
+                        "Campaign Notes",
+                        value=row.get('notes', ''),
+                        key=f"notes_{row['Actions']}"
+                    )
+                    
+                    if st.button("Update Settings", key=f"update_{row['Actions']}"):
+                        update_data = {
+                            'campaign_type': campaign_type,
+                            'utm_source': utm_source,
+                            'utm_medium': utm_medium,
+                            'expiry_date': expiry_date.strftime('%Y-%m-%d'),
+                            'enable_retargeting': enable_retargeting,
+                            'enable_qr': enable_qr,
+                            'tags': tags,
+                            'notes': notes
+                        }
+                        if shortener.db.update_campaign(row['Actions'], update_data):
+                            st.success("Settings updated successfully!")
+                            st.rerun()
+                
+                with analytics_tab:
+                    st.markdown("#### Campaign Performance")
+                    metric1, metric2, metric3 = st.columns(3)
+                    with metric1:
+                        st.metric("Total Clicks", row['Total Clicks'])
+                    with metric2:
+                        st.metric("Conversion Rate", "4.2%")
+                    with metric3:
+                        st.metric("Avg. Time on Page", "2m 34s")
+                    
+                    # Add click timeline chart
+                    timeline_data = shortener.db.get_click_timeline(row['Actions'])
+                    if not timeline_data.empty:
+                        st.markdown("#### Click Timeline")
+                        st.line_chart(
+                            timeline_data,
+                            use_container_width=True
+                        )
+                    else:
+                        st.info("No click data available yet for this campaign")
+                
+                with social_tab:
+                    st.markdown("#### Social Media Integration")
+                    social1, social2 = st.columns(2)
+                    
+                    with social1:
+                        st.markdown("##### Share Campaign")
+                        st.button("Share on Twitter", key=f"twitter_{row['Actions']}")
+                        st.button("Share on LinkedIn", key=f"linkedin_{row['Actions']}")
+                        st.button("Share on Facebook", key=f"facebook_{row['Actions']}")
+                    
+                    with social2:
+                        st.markdown("##### Social Performance")
+                        st.metric("Social Clicks", "125")
+                        st.metric("Social Engagement", "3.2%")
+                
+                # Quick Actions
+                action1, action2, action3, action4 = st.columns(4)
+                with action1:
+                    if st.button("📊 View Stats", key=f"stats_{row['Actions']}"):
+                        st.json(shortener.db.get_campaign_stats(row['Actions']))
+                with action2:
+                    if st.button("✏️ Edit URL", key=f"edit_{row['Actions']}"):
+                        st.session_state.editing_campaign = row['Actions']
+                with action3:
+                    if st.button("🔗 Copy Link", key=f"copy_{row['Actions']}"):
+                        st.code(row['Short URL'])
+                with action4:
+                    if st.button("🗑️ Delete", key=f"del_{row['Actions']}"):
+                        if shortener.db.delete_campaign(row['Actions']):
+                            st.success("Campaign deleted!")
+                            st.rerun()
+    else:
+        st.info("No active campaigns yet. Create your first campaign above!")
 
 if __name__ == "__main__":
     main() 
