@@ -25,40 +25,58 @@ class Database:
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Check if enable_tracking column exists
-            c.execute("PRAGMA table_info(urls)")
-            columns = [column[1] for column in c.fetchall()]
+            # Drop existing tables to update schema
+            c.execute('DROP TABLE IF EXISTS urls')
+            c.execute('DROP TABLE IF EXISTS analytics')
             
-            if 'urls' not in columns:
-                # Create URLs table if it doesn't exist
-                c.execute('''
-                    CREATE TABLE IF NOT EXISTS urls (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        original_url TEXT NOT NULL,
-                        short_code TEXT UNIQUE NOT NULL,
-                        created_at DATETIME NOT NULL,
-                        total_clicks INTEGER DEFAULT 0
-                    )
-                ''')
+            # Create URLs table with campaign management fields
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS urls (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    original_url TEXT NOT NULL,
+                    short_code TEXT UNIQUE NOT NULL,
+                    campaign_name TEXT,
+                    campaign_type TEXT,
+                    created_at DATETIME NOT NULL,
+                    total_clicks INTEGER DEFAULT 0,
+                    enable_tracking BOOLEAN DEFAULT 1,
+                    utm_source TEXT,
+                    utm_medium TEXT,
+                    utm_campaign TEXT,
+                    utm_content TEXT,
+                    utm_term TEXT,
+                    expiry_date DATETIME,
+                    status TEXT DEFAULT 'active',
+                    tags TEXT,
+                    notes TEXT,
+                    last_updated DATETIME
+                )
+            ''')
             
-            # Add enable_tracking column if it doesn't exist
-            if 'enable_tracking' not in columns:
-                c.execute('ALTER TABLE urls ADD COLUMN enable_tracking BOOLEAN DEFAULT 1')
-
-            # Create analytics table
+            # Create enhanced analytics table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS analytics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     short_code TEXT NOT NULL,
                     clicked_at DATETIME NOT NULL,
+                    country TEXT,
+                    city TEXT,
+                    device_type TEXT,
+                    browser TEXT,
+                    os TEXT,
+                    screen_size TEXT,
+                    language TEXT,
+                    referrer TEXT,
                     ip_address TEXT,
                     user_agent TEXT,
-                    referrer TEXT,
+                    utm_data TEXT,
+                    conversion_data TEXT,
                     FOREIGN KEY (short_code) REFERENCES urls (short_code)
                 )
             ''')
             
             conn.commit()
+            logger.info("Database tables created successfully")
         except Exception as e:
             logger.error(f"Error creating tables: {str(e)}")
             raise
@@ -113,21 +131,53 @@ class Database:
         c = conn.cursor()
         try:
             c.execute('''
-                SELECT original_url, created_at, total_clicks 
+                SELECT 
+                    original_url, 
+                    created_at, 
+                    total_clicks,
+                    campaign_name,
+                    campaign_type,
+                    utm_source,
+                    utm_medium,
+                    utm_campaign,
+                    utm_content,
+                    utm_term,
+                    expiry_date,
+                    enable_tracking
                 FROM urls 
                 WHERE short_code = ?
             ''', (short_code,))
             
             result = c.fetchone()
             if not result:
+                logger.error(f"No URL found for short code: {short_code}")
                 return None
-                
+            
+            # Check if URL has expired
+            if result[10]:  # expiry_date
+                expiry = datetime.strptime(result[10], '%Y-%m-%d')
+                if expiry < datetime.now():
+                    logger.error(f"URL has expired: {short_code}")
+                    return None
+            
             return {
                 'original_url': result[0],
                 'created_at': result[1],
                 'total_clicks': result[2],
+                'campaign_name': result[3],
+                'campaign_type': result[4],
+                'utm_source': result[5],
+                'utm_medium': result[6],
+                'utm_campaign': result[7],
+                'utm_content': result[8],
+                'utm_term': result[9],
+                'expiry_date': result[10],
+                'enable_tracking': bool(result[11]),
                 'short_code': short_code
             }
+        except Exception as e:
+            logger.error(f"Error getting URL info: {str(e)}")
+            return None
         finally:
             conn.close()
 
@@ -470,19 +520,29 @@ class Database:
             conn.close() 
 
     def increment_clicks(self, short_code: str) -> bool:
-        """Increment the click count for a URL"""
+        """Track click with basic analytics"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Update click count
             c.execute('''
                 UPDATE urls 
                 SET total_clicks = total_clicks + 1 
                 WHERE short_code = ?
             ''', (short_code,))
+            
+            # Add analytics entry
+            c.execute('''
+                INSERT INTO analytics (short_code, clicked_at) 
+                VALUES (?, ?)
+            ''', (short_code, now))
+            
             conn.commit()
             return True
         except Exception as e:
-            logger.error(f"Error incrementing clicks: {str(e)}")
+            logger.error(f"Error tracking click: {str(e)}")
             return False
         finally:
             conn.close() 
@@ -567,3 +627,217 @@ class Database:
             return False
         finally:
             conn.close() 
+
+    def save_campaign_url(self, url: str, short_code: str, campaign_name: str = None, 
+                         campaign_type: str = None, utm_params: dict = None, 
+                         expiry_date: str = None, enable_tracking: bool = True) -> bool:
+        """Save a campaign URL with all associated parameters"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Insert URL with campaign details
+            c.execute('''
+                INSERT INTO urls (
+                    original_url,
+                    short_code,
+                    campaign_name,
+                    campaign_type,
+                    created_at,
+                    enable_tracking,
+                    total_clicks,
+                    utm_source,
+                    utm_medium,
+                    utm_campaign,
+                    utm_content,
+                    utm_term,
+                    expiry_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                url,
+                short_code,
+                campaign_name,
+                campaign_type,
+                now,
+                1 if enable_tracking else 0,
+                0,  # Initial click count
+                utm_params.get('utm_source') if utm_params else None,
+                utm_params.get('utm_medium') if utm_params else None,
+                utm_params.get('utm_campaign') if utm_params else None,
+                utm_params.get('utm_content') if utm_params else None,
+                utm_params.get('utm_term') if utm_params else None,
+                expiry_date
+            ))
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error saving campaign URL: {str(e)}")
+            return False
+        finally:
+            conn.close() 
+
+    def update_campaign(self, short_code: str, update_data: dict) -> bool:
+        """Update campaign details"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Build update query dynamically based on provided fields
+            update_fields = []
+            values = []
+            for key, value in update_data.items():
+                if key in ['campaign_name', 'campaign_type', 'utm_source', 'utm_medium', 
+                          'utm_campaign', 'utm_content', 'utm_term', 'status', 'tags', 
+                          'notes', 'expiry_date']:
+                    update_fields.append(f"{key} = ?")
+                    values.append(value)
+            
+            if not update_fields:
+                return False
+            
+            # Add last_updated timestamp
+            update_fields.append("last_updated = ?")
+            values.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            
+            # Add short_code to values
+            values.append(short_code)
+            
+            # Execute update
+            query = f'''
+                UPDATE urls 
+                SET {", ".join(update_fields)}
+                WHERE short_code = ?
+            '''
+            c.execute(query, values)
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating campaign: {str(e)}")
+            return False
+        finally:
+            conn.close()
+
+    def delete_campaign(self, short_code: str) -> bool:
+        """Delete a campaign and its analytics"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Begin transaction
+            c.execute("BEGIN TRANSACTION")
+            
+            # Delete analytics data
+            c.execute("DELETE FROM analytics WHERE short_code = ?", (short_code,))
+            
+            # Delete URL record
+            c.execute("DELETE FROM urls WHERE short_code = ?", (short_code,))
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error deleting campaign: {str(e)}")
+            return False
+        finally:
+            conn.close()
+
+    def get_campaign_details(self, short_code: str) -> Optional[Dict[str, Any]]:
+        """Get detailed campaign information"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('''
+                SELECT 
+                    original_url,
+                    campaign_name,
+                    campaign_type,
+                    created_at,
+                    total_clicks,
+                    enable_tracking,
+                    utm_source,
+                    utm_medium,
+                    utm_campaign,
+                    utm_content,
+                    utm_term,
+                    expiry_date,
+                    status,
+                    tags,
+                    notes,
+                    last_updated
+                FROM urls 
+                WHERE short_code = ?
+            ''', (short_code,))
+            
+            result = c.fetchone()
+            if not result:
+                return None
+            
+            return {
+                'original_url': result[0],
+                'campaign_name': result[1],
+                'campaign_type': result[2],
+                'created_at': result[3],
+                'total_clicks': result[4],
+                'enable_tracking': bool(result[5]),
+                'utm_source': result[6],
+                'utm_medium': result[7],
+                'utm_campaign': result[8],
+                'utm_content': result[9],
+                'utm_term': result[10],
+                'expiry_date': result[11],
+                'status': result[12],
+                'tags': result[13].split(',') if result[13] else [],
+                'notes': result[14],
+                'last_updated': result[15],
+                'short_code': short_code
+            }
+        finally:
+            conn.close()
+
+    def get_campaign_stats(self, short_code: str) -> Dict[str, Any]:
+        """Get comprehensive campaign statistics"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            stats = {
+                'total_clicks': 0,
+                'unique_visitors': 0,
+                'devices': {},
+                'browsers': {},
+                'countries': {},
+                'utm_sources': {},
+                'conversions': 0,
+                'last_click': None
+            }
+            
+            # Get basic stats
+            c.execute('''
+                SELECT total_clicks, last_updated
+                FROM urls 
+                WHERE short_code = ?
+            ''', (short_code,))
+            basic = c.fetchone()
+            if basic:
+                stats['total_clicks'] = basic[0]
+                stats['last_updated'] = basic[1]
+            
+            # Get detailed analytics
+            c.execute('''
+                SELECT 
+                    COUNT(DISTINCT ip_address) as unique_visitors,
+                    COUNT(CASE WHEN conversion_data IS NOT NULL THEN 1 END) as conversions,
+                    MAX(clicked_at) as last_click
+                FROM analytics 
+                WHERE short_code = ?
+            ''', (short_code,))
+            
+            analytics = c.fetchone()
+            if analytics:
+                stats['unique_visitors'] = analytics[0]
+                stats['conversions'] = analytics[1]
+                stats['last_click'] = analytics[2]
+            
+            return stats
+        finally:
+            conn.close()
