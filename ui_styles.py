@@ -1,152 +1,163 @@
 def load_ui_styles():
     return """
     <style>
-        /* Main theme colors and variables */
+        /* Dark Theme Colors */
         :root {
-            --primary: #00ff88;
-            --primary-dark: #00cc70;
-            --secondary: #1e88e5;
-            --background: #0e1117;
-            --surface: #1e1e1e;
-            --text: #ffffff;
-            --text-secondary: rgba(255,255,255,0.7);
-            --accent: rgba(0, 255, 136, 0.1);
+            --background-color: #0E1117;
+            --secondary-background-color: #262730;
+            --text-color: #FAFAFA;
+            --secondary-text-color: #B0B0B0;
+            --accent-color: #FF4B4B;
+            --success-color: #00CC66;
+            --warning-color: #FFA500;
+            --error-color: #FF4B4B;
         }
 
-        /* Sidebar styling */
-        [data-testid="stSidebar"] {
-            background-color: var(--surface);
-            border-right: 1px solid rgba(0,255,136,0.1);
+        /* Main Container */
+        .stApp {
+            background-color: var(--background-color);
+            color: var(--text-color);
         }
 
-        [data-testid="stSidebar"] .stRadio label {
-            color: var(--text) !important;
-            font-weight: 500;
-            padding: 8px;
-            border-radius: 4px;
+        /* Sidebar */
+        .css-1d391kg {
+            background-color: var(--secondary-background-color);
+        }
+
+        /* Cards and Containers */
+        .stMarkdown, .stDataFrame {
+            background-color: var(--secondary-background-color);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Metrics */
+        .css-1xarl3l {
+            background-color: var(--secondary-background-color);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+            border-radius: 0.5rem;
+        }
+
+        /* Buttons */
+        .stButton > button {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 0.3rem;
+            padding: 0.5rem 1rem;
             transition: all 0.2s;
         }
 
-        [data-testid="stSidebar"] .stRadio label:hover {
-            background: rgba(0,255,136,0.1);
+        .stButton > button:hover {
+            background-color: #FF6B6B;
+            box-shadow: 0 0 10px rgba(255, 75, 75, 0.3);
         }
 
-        /* Header styling */
-        .header-accent {
-            background: linear-gradient(135deg, rgba(30,30,30,0.9) 0%, rgba(45,45,45,0.9) 100%);
-            padding: 1.5rem;
-            border-radius: 12px;
-            margin-bottom: 24px;
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            font-size: 2rem;
-            font-weight: 600;
-            text-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+        /* Input Fields */
+        .stTextInput > div > div > input,
+        .stSelectbox > div > div > select {
+            background-color: var(--secondary-background-color);
+            color: var(--text-color);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
-        /* Card styling */
-        [data-testid="stVerticalBlock"] > [style*="flex-direction: column;"] > [data-testid="stVerticalBlock"] {
-            background: linear-gradient(145deg, rgba(30,30,30,0.6) 0%, rgba(30,30,30,0.3) 100%);
-            border: 1px solid rgba(0, 255, 136, 0.1);
-            padding: 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            margin-bottom: 1rem;
-            backdrop-filter: blur(10px);
-            color: var(--text);
+        /* Tables */
+        .dataframe {
+            background-color: var(--secondary-background-color);
+            color: var(--text-color);
         }
 
-        /* Tab styling */
+        .dataframe th {
+            background-color: var(--accent-color);
+            color: white;
+        }
+
+        .dataframe td {
+            background-color: var(--secondary-background-color);
+            color: var(--text-color);
+        }
+
+        /* Charts */
+        .js-plotly-plot {
+            background-color: var(--secondary-background-color);
+        }
+
+        /* Tabs */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 8px;
-            background-color: var(--surface);
-            padding: 8px;
-            border-radius: 8px;
+            background-color: var(--secondary-background-color);
+            border-radius: 0.5rem 0.5rem 0 0;
         }
 
         .stTabs [data-baseweb="tab"] {
-            background-color: transparent !important;
-            border: 1px solid rgba(0,255,136,0.1) !important;
-            border-radius: 6px !important;
-            color: var(--text) !important;
-            padding: 8px 16px !important;
+            color: var(--text-color);
         }
 
-        .stTabs [aria-selected="true"] {
-            background-color: rgba(0,255,136,0.1) !important;
-            border-color: var(--primary) !important;
-        }
-
-        /* Button styling */
-        .stButton button {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-            color: var(--background);
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-
-        .stButton button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,255,136,0.2);
-        }
-
-        /* Form field styling */
-        .stTextInput input,
-        .stNumberInput input,
-        .stSelectbox select {
-            background-color: var(--surface) !important;
-            border: 1px solid rgba(0,255,136,0.1) !important;
-            border-radius: 6px !important;
-            color: var(--text) !important;
-            padding: 8px 12px !important;
-        }
-
-        /* Metric styling */
-        [data-testid="stMetric"] {
-            background: linear-gradient(145deg, rgba(0,255,136,0.05) 0%, rgba(30,30,30,0.2) 100%);
-            padding: 1.2rem;
-            border-radius: 12px;
-            border: 1px solid rgba(0, 255, 136, 0.1);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-
-        [data-testid="stMetricValue"] {
-            color: var(--primary) !important;
-            font-size: 1.8rem !important;
-            font-weight: 600 !important;
-            text-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
-        }
-
-        /* Table styling */
-        .stDataFrame {
-            background: linear-gradient(145deg, rgba(30,30,30,0.6) 0%, rgba(30,30,30,0.3) 100%);
-            border-radius: 12px;
-            border: 1px solid rgba(0, 255, 136, 0.1);
-            overflow: hidden;
-        }
-
-        .stDataFrame th {
-            background-color: rgba(0,255,136,0.1) !important;
-            color: var(--primary) !important;
-            font-weight: 600 !important;
-        }
-
-        .stDataFrame td {
-            color: var(--text) !important;
-            border-bottom: 1px solid rgba(255,255,255,0.05) !important;
-        }
-
-        /* Chart styling */
-        [data-testid="stChart"] {
-            background: linear-gradient(145deg, rgba(30,30,30,0.6) 0%, rgba(30,30,30,0.3) 100%);
-            border-radius: 12px;
-            border: 1px solid rgba(0, 255, 136, 0.1);
+        .stTabs [data-baseweb="tab-panel"] {
+            background-color: var(--secondary-background-color);
+            border-radius: 0 0 0.5rem 0.5rem;
             padding: 1rem;
+        }
+
+        /* Success/Error Messages */
+        .stSuccess {
+            background-color: var(--success-color);
+            color: white;
+        }
+
+        .stError {
+            background-color: var(--error-color);
+            color: white;
+        }
+
+        /* Links */
+        a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+
+        a:hover {
+            color: #FF6B6B;
+            text-decoration: underline;
+        }
+
+        /* Custom Components */
+        .metric-card {
+            background-color: var(--secondary-background-color);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 1rem;
+        }
+
+        .metric-card h3 {
+            color: var(--text-color);
+            margin: 0;
+        }
+
+        .metric-card p {
+            color: var(--secondary-text-color);
+            margin: 0.5rem 0 0 0;
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--background-color);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent-color);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #FF6B6B;
         }
     </style>
     """ 
