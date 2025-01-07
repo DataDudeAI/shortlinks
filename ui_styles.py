@@ -22,6 +22,26 @@ def load_ui_styles():
             --pink-gradient: linear-gradient(135deg, #DB2777, #EC4899);
         }
 
+        /* Text Styles */
+        p, label, span {
+            color: var(--text-color) !important;
+            font-size: 0.95rem !important;
+        }
+
+        .stMarkdown p {
+            color: var(--text-color) !important;
+            font-size: 0.95rem !important;
+            line-height: 1.6 !important;
+        }
+
+        /* Labels and Headers */
+        label, .stSelectbox label {
+            color: var(--text-color) !important;
+            font-size: 0.95rem !important;
+            font-weight: 500 !important;
+            margin-bottom: 0.3rem !important;
+        }
+
         /* Main Header */
         .main-header {
             background: var(--purple-gradient);
@@ -55,29 +75,80 @@ def load_ui_styles():
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
 
-        /* Campaign Creation Form */
-        [data-testid="stForm"] {
-            background: var(--card-background);
-            padding: 1.5rem;
-            border-radius: 1rem;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            margin-bottom: 1rem;
+        /* Table Text */
+        .stDataFrame td {
+            color: var(--text-color) !important;
+            font-size: 0.9rem !important;
         }
 
-        /* Form Input Fields */
+        .stDataFrame th {
+            color: white !important;
+            font-size: 0.95rem !important;
+            font-weight: 600 !important;
+            background: var(--secondary-background-color) !important;
+            border-bottom: 2px solid var(--accent-color) !important;
+            padding: 0.75rem 1rem !important;
+        }
+
+        /* Activity Item Text */
+        .activity-item {
+            color: var(--text-color) !important;
+            font-size: 0.9rem !important;
+        }
+
+        .activity-item strong {
+            color: var(--accent-color) !important;
+            font-weight: 600 !important;
+        }
+
+        .activity-time {
+            color: var(--secondary-text-color) !important;
+            font-size: 0.8rem !important;
+        }
+
+        /* Metric Text */
+        [data-testid="stMetricLabel"] {
+            color: var(--secondary-text-color) !important;
+            font-size: 0.9rem !important;
+            font-weight: 500 !important;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-size: 1.8rem !important;
+            font-weight: 600 !important;
+            background: var(--green-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: none !important;
+        }
+
+        [data-testid="stMetricDelta"] {
+            color: var(--accent-color) !important;
+            background: rgba(16, 185, 129, 0.1);
+            padding: 0.2rem 0.6rem;
+            border-radius: 1rem;
+            font-size: 0.8rem !important;
+        }
+
+        /* Form Input Text */
         .stTextInput input, .stSelectbox select, .stTextArea textarea {
+            color: var(--text-color) !important;
+            font-size: 0.95rem !important;
             background: var(--secondary-background-color) !important;
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            border-radius: 0.5rem !important;
-            padding: 0.5rem 1rem !important;
-            color: white !important;
-            transition: all 0.2s ease;
         }
 
-        .stTextInput input:focus, .stSelectbox select:focus, .stTextArea textarea:focus {
-            border-color: var(--accent-color) !important;
-            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2) !important;
+        /* Button Text */
+        .stButton > button {
+            color: white !important;
+            font-size: 0.95rem !important;
+            font-weight: 600 !important;
+        }
+
+        /* Placeholder Text */
+        ::placeholder {
+            color: var(--secondary-text-color) !important;
+            opacity: 0.7 !important;
         }
 
         /* Metric Cards */
@@ -95,22 +166,6 @@ def load_ui_styles():
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
             border-color: var(--accent-color);
             background: linear-gradient(to bottom right, var(--card-background), rgba(16, 185, 129, 0.05));
-        }
-
-        [data-testid="stMetricValue"] {
-            font-size: 2rem !important;
-            font-weight: 600 !important;
-            background: var(--green-gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        [data-testid="stMetricDelta"] {
-            color: var(--accent-color) !important;
-            background: rgba(16, 185, 129, 0.1);
-            padding: 0.2rem 0.6rem;
-            border-radius: 1rem;
-            font-size: 0.8rem !important;
         }
 
         /* Analytics Charts */
@@ -155,13 +210,6 @@ def load_ui_styles():
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
             overflow: hidden;
             margin: 1rem 0;
-        }
-
-        .stDataFrame th {
-            background: var(--secondary-background-color) !important;
-            border-bottom: 2px solid var(--accent-color) !important;
-            padding: 0.75rem 1rem !important;
-            font-weight: 600 !important;
         }
 
         /* QR Code Section */
