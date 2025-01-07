@@ -1,134 +1,181 @@
 def load_ui_styles():
     return """
     <style>
-        /* Card-like containers with shadows */
+        /* Dark theme enhancements */
+        .stApp {
+            background-color: #0e1117;
+        }
+
+        /* Card styling with dark theme */
         [data-testid="stVerticalBlock"] > [style*="flex-direction: column;"] > [data-testid="stVerticalBlock"] {
-            background-color: white;
+            background-color: #1e1e1e;
             padding: 20px;
             border-radius: 10px;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
             margin-bottom: 24px;
+            border: 1px solid #2d2d2d;
         }
         
-        /* Metrics styling */
+        /* Enhanced metrics styling */
         [data-testid="stMetric"] {
-            background-color: #f8fafc;
+            background-color: #262730;
             padding: 15px;
             border-radius: 8px;
-            border-left: 4px solid #1e88e5;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border-left: 4px solid #00ff88;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
         }
         
-        /* Button styling */
-        .stButton button {
+        [data-testid="stMetric"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            border-left: 4px solid #00ff88;
+        }
+        
+        /* Modern form styling */
+        [data-testid="stTextInput"] input {
+            background-color: #262730;
+            border: 1px solid #404040;
+            color: white;
             border-radius: 6px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            padding: 12px;
             transition: all 0.2s ease;
         }
+        
+        [data-testid="stTextInput"] input:focus {
+            border-color: #00ff88;
+            box-shadow: 0 0 0 2px rgba(0,255,136,0.2);
+        }
+
+        /* Button enhancements */
+        .stButton button {
+            background-color: #262730 !important;
+            color: white !important;
+            border: 1px solid #404040 !important;
+            border-radius: 6px;
+            padding: 10px 20px;
+            transition: all 0.2s ease;
+        }
+        
         .stButton button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            border-color: #00ff88 !important;
+            background-color: #2d2d2d !important;
         }
-        
-        /* Form fields styling */
-        [data-testid="stTextInput"] input {
-            border-radius: 6px;
-            border: 1px solid #e2e8f0;
-            padding: 10px;
-        }
-        
-        /* Dataframe styling */
-        [data-testid="stDataFrame"] {
-            border-radius: 10px;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-            padding: 10px;
-        }
-        
+
         /* Tab styling */
         .stTabs [data-baseweb="tab-list"] {
             gap: 8px;
+            background-color: #1e1e1e;
             padding: 0.5rem;
-        }
-        .stTabs [data-baseweb="tab"] {
-            border-radius: 4px;
-            padding: 10px 16px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border-radius: 8px;
+            border: 1px solid #2d2d2d;
         }
         
-        /* Headers styling */
+        .stTabs [data-baseweb="tab"] {
+            background-color: #262730 !important;
+            border-radius: 4px;
+            color: white;
+            padding: 10px 16px;
+            transition: all 0.2s ease;
+        }
+        
+        .stTabs [data-baseweb="tab"]:hover {
+            background-color: #2d2d2d !important;
+            border-color: #00ff88;
+        }
+
+        /* Headers with modern gradient */
         h1, h2, h3 {
-            color: #1e293b;
+            background: linear-gradient(90deg, #00ff88, #00bfff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
             padding: 8px 0;
         }
-        
-        /* Code block styling */
+
+        /* Code block enhancement */
         pre {
+            background-color: #262730 !important;
+            border: 1px solid #404040;
             border-radius: 8px;
             padding: 12px;
-            background-color: #f8fafc !important;
-            border: 1px solid #e2e8f0;
+            color: #00ff88;
         }
-        
-        /* Expander styling */
-        .streamlit-expanderHeader {
-            border-radius: 8px;
-            background-color: #f8fafc;
+
+        /* Table/DataFrame styling */
+        [data-testid="stDataFrame"] {
+            background-color: #1e1e1e;
+            border-radius: 10px;
             padding: 10px;
+            border: 1px solid #2d2d2d;
         }
-        
+
         /* Success/Error message styling */
         .stSuccess, .stError {
+            background-color: #262730;
+            color: white;
             padding: 16px;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border-left: 4px solid #00ff88;
         }
-        
-        /* Divider styling */
-        hr {
-            margin: 24px 0;
-            border-color: #e2e8f0;
+
+        .stError {
+            border-left-color: #ff4444;
         }
-        
-        /* Container hover effect */
-        .element-container:hover {
-            transform: translateY(-2px);
-            transition: transform 0.2s ease;
-        }
-        
+
         /* Custom scrollbar */
         ::-webkit-scrollbar {
-            width: 10px;
-            height: 10px;
+            width: 8px;
+            height: 8px;
         }
+        
         ::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 5px;
+            background: #1e1e1e;
+            border-radius: 4px;
         }
+        
         ::-webkit-scrollbar-thumb {
-            background: #888;
-            border-radius: 5px;
+            background: #404040;
+            border-radius: 4px;
         }
+        
         ::-webkit-scrollbar-thumb:hover {
-            background: #555;
+            background: #4d4d4d;
         }
-        
-        /* Campaign card styling */
-        .stMarkdown {
-            background-color: white;
-            padding: 1rem;
+
+        /* Recent links table enhancement */
+        .dataframe {
+            background-color: #262730;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            margin-bottom: 1rem;
+            border: 1px solid #404040;
         }
         
-        /* Metric animations */
-        @keyframes metric-pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.02); }
-            100% { transform: scale(1); }
+        .dataframe th {
+            background-color: #1e1e1e;
+            color: #00ff88;
+            padding: 12px !important;
         }
-        [data-testid="stMetric"]:hover {
-            animation: metric-pulse 0.5s ease-in-out;
+        
+        .dataframe td {
+            padding: 12px !important;
+            border-color: #404040 !important;
+        }
+
+        /* Selectbox styling */
+        [data-testid="stSelectbox"] {
+            background-color: #262730;
+            border-radius: 6px;
+            border: 1px solid #404040;
+        }
+
+        /* Form container */
+        [data-testid="stForm"] {
+            background-color: #262730;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #404040;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
     </style>
     """ 
