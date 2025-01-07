@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 import os
 import logging
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -525,19 +526,26 @@ class Database:
             # Get current click count
             c.execute('SELECT total_clicks FROM urls WHERE short_code = ?', (short_code,))
             result = c.fetchone()
-            current_clicks = result[0] if result else 0
+            if not result:
+                logger.error(f"No URL found for short code: {short_code}")
+                return False
             
-            # Update click count
+            current_clicks = result[0]
+            
+            # Update click count in urls table
             c.execute('''
                 UPDATE urls 
-                SET total_clicks = total_clicks + 1 
+                SET total_clicks = total_clicks + 1,
+                    last_clicked = datetime('now')
                 WHERE short_code = ?
             ''', (short_code,))
             
             # Add analytics entry
             c.execute('''
-                INSERT INTO analytics (short_code, clicked_at) 
-                VALUES (?, ?)
+                INSERT INTO analytics (
+                    short_code,
+                    clicked_at
+                ) VALUES (?, ?)
             ''', (short_code, now))
             
             conn.commit()
@@ -868,5 +876,93 @@ class Database:
                 stats['last_click'] = analytics[2]
             
             return stats
+        finally:
+            conn.close()
+
+    def get_click_timeline(self, short_code: str) -> pd.DataFrame:
+        """Get timeline of clicks for visualization"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Get clicks grouped by date
+            c.execute('''
+                SELECT 
+                    DATE(clicked_at) as click_date,
+                    COUNT(*) as click_count
+                FROM analytics 
+                WHERE short_code = ?
+                GROUP BY DATE(clicked_at)
+                ORDER BY click_date
+            ''', (short_code,))
+            
+            results = c.fetchall()
+            
+            # Create DataFrame with continuous date range
+            if results:
+                df = pd.DataFrame(results, columns=['date', 'clicks'])
+                df['date'] = pd.to_datetime(df['date'])
+                
+                # Create continuous date range
+                date_range = pd.date_range(
+                    start=df['date'].min(),
+                    end=df['date'].max()
+                )
+                
+                # Reindex with full date range, fill missing values with 0
+                df = df.set_index('date').reindex(date_range, fill_value=0)
+                
+                return df
+            else:
+                # Return empty DataFrame with current date if no clicks
+                today = datetime.now().date()
+                return pd.DataFrame(
+                    {'clicks': [0]},
+                    index=pd.date_range(today, today)
+                )
+                
+        except Exception as e:
+            logger.error(f"Error getting click timeline for {short_code}: {str(e)}")
+            # Return empty DataFrame on error
+            today = datetime.now().date()
+            return pd.DataFrame(
+                {'clicks': [0]},
+                index=pd.date_range(today, today)
+            )
+        finally:
+            conn.close()
+
+    def get_total_clicks(self) -> int:
+        """Get total clicks across all campaigns"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('SELECT SUM(total_clicks) FROM urls WHERE is_active = 1')
+            result = c.fetchone()
+            total = result[0] if result[0] is not None else 0
+            logger.info(f"Total clicks across all campaigns: {total}")
+            return total
+        except Exception as e:
+            logger.error(f"Error getting total clicks: {str(e)}")
+            return 0
+        finally:
+            conn.close()
+
+    def get_recent_clicks_count(self, hours: int = 24) -> int:
+        """Get click count for the last X hours"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute('''
+                SELECT COUNT(*) 
+                FROM analytics 
+                WHERE clicked_at >= datetime('now', ?)
+            ''', (f'-{hours} hours',))
+            result = c.fetchone()
+            count = result[0] if result[0] is not None else 0
+            logger.info(f"Recent clicks (last {hours} hours): {count}")
+            return count
+        except Exception as e:
+            logger.error(f"Error getting recent clicks: {str(e)}")
+            return 0
         finally:
             conn.close()
