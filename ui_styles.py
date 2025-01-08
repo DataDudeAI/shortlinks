@@ -294,7 +294,7 @@ def load_ui_styles():
     </style>
     """
 
-def get_theme_colors(theme='light'):
+def get_theme_colors(theme='dark'):
     """Get color scheme based on theme"""
     return {
         'light': {
