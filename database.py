@@ -610,16 +610,15 @@ class Database:
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Get basic metrics
+            # Get basic metrics with proper counting
             c.execute("""
                 SELECT 
-                    COUNT(*) as total_campaigns,
-                    SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_campaigns,
-                    SUM(total_clicks) as total_clicks,
+                    COUNT(DISTINCT u.id) as total_campaigns,
+                    SUM(CASE WHEN u.is_active = 1 THEN 1 ELSE 0 END) as active_campaigns,
+                    COALESCE(SUM(u.total_clicks), 0) as total_clicks,
                     COUNT(DISTINCT a.ip_address) as unique_visitors
                 FROM urls u
                 LEFT JOIN analytics a ON u.short_code = a.short_code
-                WHERE u.is_active = 1
             """)
             
             row = c.fetchone()
@@ -635,14 +634,14 @@ class Database:
                 SELECT 
                     u.campaign_name,
                     u.campaign_type,
-                    u.total_clicks as clicks,
+                    COALESCE(u.total_clicks, 0) as clicks,
                     COUNT(DISTINCT a.ip_address) as unique_visitors,
                     MAX(a.clicked_at) as last_click
                 FROM urls u
                 LEFT JOIN analytics a ON u.short_code = a.short_code
                 WHERE u.is_active = 1
-                GROUP BY u.id
-                ORDER BY u.total_clicks DESC
+                GROUP BY u.id, u.campaign_name, u.campaign_type
+                ORDER BY clicks DESC
                 LIMIT 5
             """)
             
@@ -650,7 +649,7 @@ class Database:
                 {
                     'campaign_name': row[0],
                     'campaign_type': row[1],
-                    'clicks': row[2] or 0,
+                    'clicks': row[2],
                     'unique_visitors': row[3] or 0,
                     'last_click': row[4]
                 }
@@ -663,10 +662,10 @@ class Database:
                     u.campaign_name,
                     u.campaign_type,
                     a.clicked_at,
-                    a.state,
-                    a.device_type,
-                    a.browser,
-                    a.referrer
+                    COALESCE(a.state, 'Unknown') as state,
+                    COALESCE(a.device_type, 'Unknown') as device_type,
+                    COALESCE(a.browser, 'Unknown') as browser,
+                    COALESCE(a.referrer, 'Direct') as referrer
                 FROM analytics a
                 JOIN urls u ON a.short_code = u.short_code
                 WHERE u.is_active = 1
@@ -679,15 +678,15 @@ class Database:
                     'campaign_name': row[0],
                     'campaign_type': row[1],
                     'clicked_at': row[2],
-                    'state': row[3] or 'Unknown',
-                    'device_type': row[4] or 'Unknown',
-                    'browser': row[5] or 'Unknown',
-                    'referrer': row[6] or 'Direct'
+                    'state': row[3],
+                    'device_type': row[4],
+                    'browser': row[5],
+                    'referrer': row[6]
                 }
                 for row in c.fetchall()
             ]
 
-            # Get daily stats
+            # Get daily stats with proper counting
             c.execute("""
                 WITH RECURSIVE dates(date) AS (
                     SELECT date('now', '-6 days')
@@ -698,7 +697,7 @@ class Database:
                 )
                 SELECT 
                     dates.date,
-                    COUNT(DISTINCT a.id) as clicks
+                    COUNT(a.id) as clicks
                 FROM dates
                 LEFT JOIN analytics a ON date(a.clicked_at) = dates.date
                 GROUP BY dates.date
@@ -751,19 +750,21 @@ class Database:
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # First update URL stats
+            # First verify the URL exists and is active
+            c.execute("SELECT 1 FROM urls WHERE short_code = ? AND is_active = 1", (short_code,))
+            if not c.fetchone():
+                logger.error(f"No active URL found for short code: {short_code}")
+                return False
+
+            # Update URL stats - increment total_clicks and update last_clicked
             c.execute('''
                 UPDATE urls 
                 SET total_clicks = COALESCE(total_clicks, 0) + 1,
                     last_clicked = datetime('now')
                 WHERE short_code = ?
             ''', (short_code,))
-            
-            if c.rowcount == 0:
-                logger.error(f"No URL found for short code: {short_code}")
-                return False
 
-            # Then insert click data with all fields
+            # Insert analytics data
             c.execute('''
                 INSERT INTO analytics (
                     short_code, 
