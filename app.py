@@ -1145,6 +1145,15 @@ def render_dashboard():
     else:
         st.info("No recent activity to show")
 
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown("### Click Trends")
+        if stats['daily_stats']:
+            trend_chart = ui.render_trend_chart(stats['daily_stats'])
+            st.plotly_chart(trend_chart, use_container_width=True)
+        else:
+            st.info("No click data available yet")
+
 def clear_all_cache():
     """Clear all Streamlit cache"""
     try:
