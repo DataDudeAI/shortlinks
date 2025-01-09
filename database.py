@@ -630,7 +630,34 @@ class Database:
                 'unique_visitors': row[3] or 0
             }
 
-            # Get recent activities with campaign details
+            # Get top performing campaigns
+            c.execute("""
+                SELECT 
+                    u.campaign_name,
+                    u.campaign_type,
+                    u.total_clicks as clicks,
+                    COUNT(DISTINCT a.ip_address) as unique_visitors,
+                    MAX(a.clicked_at) as last_click
+                FROM urls u
+                LEFT JOIN analytics a ON u.short_code = a.short_code
+                WHERE u.is_active = 1
+                GROUP BY u.id
+                ORDER BY u.total_clicks DESC
+                LIMIT 5
+            """)
+            
+            stats['top_campaigns'] = [
+                {
+                    'campaign_name': row[0],
+                    'campaign_type': row[1],
+                    'clicks': row[2] or 0,
+                    'unique_visitors': row[3] or 0,
+                    'last_click': row[4]
+                }
+                for row in c.fetchall()
+            ]
+
+            # Get recent activities
             c.execute("""
                 SELECT 
                     u.campaign_name,
@@ -660,7 +687,7 @@ class Database:
                 for row in c.fetchall()
             ]
 
-            # Get daily stats for the last 7 days
+            # Get daily stats
             c.execute("""
                 WITH RECURSIVE dates(date) AS (
                     SELECT date('now', '-6 days')
@@ -713,7 +740,8 @@ class Database:
                 'daily_stats': {},
                 'device_stats': {},
                 'state_stats': {},
-                'recent_activities': []
+                'recent_activities': [],
+                'top_campaigns': []
             }
         finally:
             conn.close()
