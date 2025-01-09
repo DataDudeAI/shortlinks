@@ -2,13 +2,14 @@ def get_theme_colors(theme='dark'):
     """Get color scheme based on theme"""
     return {
         'dark': {
-            'background': '#1A1D24',
-            'card_bg': '#24282E',
+            'background': '#0A1F1C',
+            'card_bg': '#132C27',
             'text': '#E2E8F0',
             'secondary_text': '#94A3B8',
-            'primary': '#10B981',
-            'success': '#4ADE80',
-            'border': 'rgba(255,255,255,0.1)'
+            'primary': '#064E3B',
+            'primary_light': '#065F46',
+            'success': '#059669',
+            'border': 'rgba(6, 78, 59, 0.2)'
         }
     }
 
@@ -16,74 +17,130 @@ def get_styles():
     """Get base styles for the application"""
     return """
         <style>
-            /* Metric cards styling */
+            .stApp {
+                background-color: #0A1F1C;
+            }
+
             [data-testid="stMetricValue"] {
-                background-color: #24282E !important;
-                border-radius: 8px !important;
-                padding: 1rem !important;
-                color: white !important;
-                font-size: 2rem !important;
-                font-weight: 600 !important;
+                background-color: #132C27;
+                border-radius: 8px;
+                padding: 1.5rem;
+                color: white;
+                font-size: 2rem;
+                font-weight: 600;
+                border-left: 4px solid #064E3B;
             }
 
-            /* Metric delta (the green up arrows) */
             [data-testid="stMetricDelta"] {
-                background-color: rgba(74, 222, 128, 0.1) !important;
-                color: #4ADE80 !important;
-                padding: 0.25rem 0.5rem !important;
-                border-radius: 4px !important;
-                font-size: 0.875rem !important;
+                background-color: rgba(5, 150, 105, 0.15);
+                color: #10B981;
+                padding: 0.25rem 0.5rem;
+                border-radius: 4px;
+                font-size: 0.875rem;
             }
 
-            /* Metric label */
             [data-testid="stMetricLabel"] {
-                color: #94A3B8 !important;
-                font-size: 0.875rem !important;
+                color: #94A3B8;
+                font-size: 0.875rem;
             }
 
-            /* Card styling */
             div[data-testid="stHorizontalBlock"] > div {
-                background-color: #24282E !important;
-                border-radius: 8px !important;
-                padding: 1rem !important;
-                border: 1px solid rgba(255,255,255,0.1) !important;
+                background-color: #132C27;
+                border-radius: 8px;
+                padding: 1rem;
+                border: 1px solid rgba(6, 78, 59, 0.3);
             }
 
-            /* Text colors */
-            .stMarkdown, .stText {
-                color: #E2E8F0 !important;
-            }
-
-            h1, h2, h3, h4, h5, h6 {
-                color: white !important;
-            }
-
-            /* Table styling */
             .stDataFrame {
-                background-color: #24282E !important;
-                border: 1px solid rgba(255,255,255,0.1) !important;
+                background-color: #132C27;
+                border: 1px solid rgba(6, 78, 59, 0.3);
             }
 
             .stDataFrame th {
-                background-color: #2A2F36 !important;
-                color: #E2E8F0 !important;
+                background-color: #0F291F;
+                color: #E2E8F0;
+                border-bottom: 1px solid rgba(6, 78, 59, 0.3);
             }
 
             .stDataFrame td {
-                color: #94A3B8 !important;
+                color: #94A3B8;
             }
 
-            /* Input fields */
             .stTextInput input, .stNumberInput input {
-                background-color: #24282E !important;
-                border: 1px solid rgba(255,255,255,0.1) !important;
-                color: white !important;
+                background-color: #132C27;
+                border: 1px solid rgba(6, 78, 59, 0.3);
+                color: white;
             }
 
-            /* Buttons */
+            .stTextInput input:focus, .stNumberInput input:focus {
+                border-color: #064E3B;
+                box-shadow: 0 0 0 2px rgba(6, 78, 59, 0.3);
+            }
+
             .stButton button {
-                background-color: #10B981 !important;
-                color: white !important;
+                background-color: #064E3B;
+                color: white;
+                border: none;
+            }
+
+            .stButton button:hover {
+                background-color: #053E2F;
+            }
+
+            .stRadio label {
+                background-color: #132C27;
+                color: #E2E8F0;
+                border: 1px solid rgba(6, 78, 59, 0.3);
+            }
+
+            .stRadio label:hover {
+                background-color: #1A3933;
+                color: #10B981;
+                border-color: #064E3B;
+            }
+
+            .stRadio label[data-checked="true"] {
+                background-color: #064E3B;
+                color: white;
+                border-color: #064E3B;
+            }
+
+            .stSelectbox select {
+                background-color: #132C27;
+                border: 1px solid rgba(6, 78, 59, 0.3);
+                color: white;
+            }
+
+            [data-testid="stSidebar"] {
+                background-color: #0A1F1C;
+                border-right: 1px solid rgba(6, 78, 59, 0.3);
+            }
+
+            h1, h2, h3, h4, h5, h6 {
+                color: #E2E8F0;
+            }
+
+            .stMarkdown {
+                color: #E2E8F0;
+            }
+
+            /* Activity items */
+            .activity-item {
+                background-color: #132C27;
+                padding: 1rem;
+                border-radius: 0.5rem;
+                margin-bottom: 0.5rem;
+                border: 1px solid rgba(6, 78, 59, 0.3);
+            }
+
+            .activity-item-header {
+                color: #E2E8F0;
+                font-weight: 600;
+            }
+
+            .activity-item-details {
+                color: #94A3B8;
+                font-size: 0.875rem;
             }
         </style>
     """ 
