@@ -891,13 +891,22 @@ class Database:
                 logger.error(f"Short code {short_code} already exists")
                 return False
 
-            # Insert new URL
+            # Insert new URL with all required fields
             c.execute("""
                 INSERT INTO urls (
-                    short_code, original_url, campaign_name, campaign_type,
-                    utm_source, utm_medium, utm_campaign, utm_content,
-                    created_at, total_clicks, is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, 1)
+                    short_code, 
+                    original_url, 
+                    campaign_name, 
+                    campaign_type,
+                    utm_source,
+                    utm_medium,
+                    utm_campaign,
+                    utm_content,
+                    utm_term,
+                    created_at,
+                    total_clicks,
+                    is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, 1)
             """, (
                 short_code,
                 url,
@@ -906,7 +915,8 @@ class Database:
                 utm_params.get('source') if utm_params else None,
                 utm_params.get('medium') if utm_params else None,
                 utm_params.get('campaign') if utm_params else None,
-                utm_params.get('content') if utm_params else None
+                utm_params.get('content') if utm_params else None,
+                utm_params.get('term') if utm_params else None  # Added utm_term
             ))
             
             conn.commit()
