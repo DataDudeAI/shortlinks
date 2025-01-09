@@ -12,7 +12,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import json
-from ui_styles import load_ui_styles
+from ui_styles import get_styles, get_theme_colors
 from organization import Organization
 from streamlit.components.v1 import html
 from streamlit.runtime.scriptrunner import add_script_run_ctx
@@ -48,7 +48,7 @@ if 'theme' not in st.session_state:
     st.session_state.theme = 'light'
 
 # Load theme-aware styles
-st.markdown(load_ui_styles(), unsafe_allow_html=True)
+st.markdown(get_styles(), unsafe_allow_html=True)
 
 # Apply theme-specific settings
 if st.session_state.theme == 'dark':
