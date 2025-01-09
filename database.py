@@ -628,9 +628,8 @@ class Database:
             c.execute('''
                 INSERT INTO analytics (
                     short_code, clicked_at, ip_address, user_agent,
-                    referrer, state, device_type, browser, os,
-                    time_on_page
-                ) VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?)
+                    referrer, state, device_type, browser, os
+                ) VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 short_code,
                 kwargs.get('ip_address'),
@@ -639,12 +638,10 @@ class Database:
                 kwargs.get('state'),
                 kwargs.get('device_type'),
                 kwargs.get('browser'),
-                kwargs.get('os'),
-                kwargs.get('time_on_page', 0)  # Default to 0 if not provided
+                kwargs.get('os')
             ))
             
             conn.commit()
-            logger.info(f"Click recorded successfully for {short_code}")
             return True
             
         except Exception as e:
@@ -721,6 +718,108 @@ class Database:
             
         except Exception as e:
             logger.error(f"Error updating campaign: {str(e)}")
+            conn.rollback()
+            return False
+            
+        finally:
+            conn.close()
+
+    def add_click(self, short_code: str, click_data: dict):
+        """Add click data using existing record_click method"""
+        try:
+            return self.record_click(
+                short_code=short_code,
+                ip_address=click_data.get('ip'),
+                user_agent=click_data.get('user_agent'),
+                referrer=click_data.get('referrer'),
+                state=click_data.get('state'),
+                device_type=click_data.get('device_type'),
+                browser=click_data.get('browser', 'Unknown'),
+                os=click_data.get('os', 'Unknown'),
+                clicked_at=click_data.get('clicked_at')
+            )
+        except Exception as e:
+            logger.error(f"Error adding click: {e}")
+            return False
+
+    def get_clicks_by_date_range(self, start_date: datetime, end_date: datetime):
+        """Get clicks within date range"""
+        try:
+            clicks = self.db.clicks.find({
+                'clicked_at': {
+                    '$gte': start_date.strftime('%Y-%m-%d %H:%M:%S'),
+                    '$lte': end_date.strftime('%Y-%m-%d %H:%M:%S')
+                }
+            })
+            return list(clicks)
+        except Exception as e:
+            logger.error(f"Error getting clicks: {e}")
+            return []
+
+    def get_campaign_stats(self, short_code: str):
+        """Get campaign statistics"""
+        try:
+            clicks = self.db.clicks.find({'short_code': short_code})
+            total_clicks = self.db.clicks.count_documents({'short_code': short_code})
+            unique_visitors = len(set(click['ip'] for click in clicks))
+            device_stats = self.db.clicks.aggregate([
+                {'$match': {'short_code': short_code}},
+                {'$group': {
+                    '_id': '$device_type',
+                    'count': {'$sum': 1}
+                }}
+            ])
+            return {
+                'total_clicks': total_clicks,
+                'unique_visitors': unique_visitors,
+                'device_stats': list(device_stats)
+            }
+        except Exception as e:
+            logger.error(f"Error getting campaign stats: {e}")
+            return None
+
+    def create_campaign(self, name: str, campaign_type: str, url: str, short_code: str) -> bool:
+        """Create a new campaign"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Parse URL for UTM parameters
+            parsed_url = urlparse(url)
+            query_params = parse_qs(parsed_url.query)
+            
+            c.execute("""
+                INSERT INTO urls (
+                    short_code, 
+                    original_url, 
+                    campaign_name, 
+                    campaign_type,
+                    utm_source,
+                    utm_medium,
+                    utm_campaign,
+                    utm_content,
+                    utm_term,
+                    created_at,
+                    total_clicks,
+                    is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, 1)
+            """, (
+                short_code,
+                url,
+                name,
+                campaign_type,
+                query_params.get('utm_source', [None])[0],
+                query_params.get('utm_medium', [None])[0],
+                query_params.get('utm_campaign', [None])[0],
+                query_params.get('utm_content', [None])[0],
+                query_params.get('utm_term', [None])[0]
+            ))
+            
+            conn.commit()
+            logger.info(f"Campaign {name} created successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error creating campaign: {str(e)}")
             conn.rollback()
             return False
             
