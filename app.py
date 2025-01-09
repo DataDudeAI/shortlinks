@@ -1554,42 +1554,108 @@ def render_activity_item(activity: dict):
 def render_analytics(db: Database):
     st.markdown("### 📈 Campaign Analytics")
 
-    # Filters row
-    filter_col1, filter_col2, filter_col3 = st.columns([2, 2, 1])
-    with filter_col1:
-        start_date = st.date_input(
-            "Start Date",
-            value=datetime.now().date() - timedelta(days=6),
-            max_value=datetime.now().date()
-        )
-    with filter_col2:
-        end_date = st.date_input(
-            "End Date",
-            value=datetime.now().date(),
-            max_value=datetime.now().date()
-        )
-    with filter_col3:
-        st.button("Refresh Data", type="primary")
+    # Advanced Filters Section
+    with st.expander("📊 Advanced Filters", expanded=True):
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # Date Range Filter
+            date_filter = st.radio(
+                "Date Range",
+                ["Last 7 days", "Last 30 days", "Custom Range", "All Time"]
+            )
+            
+            if date_filter == "Custom Range":
+                start_date = st.date_input(
+                    "Start Date",
+                    value=datetime.now().date() - timedelta(days=7),
+                    max_value=datetime.now().date()
+                )
+                end_date = st.date_input(
+                    "End Date",
+                    value=datetime.now().date(),
+                    max_value=datetime.now().date()
+                )
+            else:
+                if date_filter == "Last 7 days":
+                    start_date = datetime.now().date() - timedelta(days=7)
+                elif date_filter == "Last 30 days":
+                    start_date = datetime.now().date() - timedelta(days=30)
+                else:  # All Time
+                    start_date = None
+                end_date = datetime.now().date()
 
-    # Get analytics data
+        with col2:
+            # Campaign Filters
+            campaign_type = st.multiselect(
+                "Campaign Type",
+                options=list(CAMPAIGN_TYPES.keys()),
+                default=[]
+            )
+            
+            device_type = st.multiselect(
+                "Device Type",
+                options=["Mobile", "Desktop", "Tablet"],
+                default=[]
+            )
+
+        with col3:
+            # Location Filter
+            states = st.multiselect(
+                "States",
+                options=INDIAN_STATES,
+                default=[]
+            )
+            
+            # Traffic Source
+            traffic_source = st.multiselect(
+                "Traffic Source",
+                options=["Direct", "Google", "Facebook", "Email", "Twitter"],
+                default=[]
+            )
+
+    # Apply Filters button
+    col1, col2, col3 = st.columns([2, 2, 1])
+    with col3:
+        apply_filters = st.button("Apply Filters", type="primary")
+        
+    # Get filtered analytics data
     stats = db.get_analytics_summary(
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        campaign_types=campaign_type if campaign_type else None,
+        device_types=device_type if device_type else None,
+        states=states if states else None,
+        sources=traffic_source if traffic_source else None
     )
 
-    # Key Metrics with icons and colors
-    st.markdown("""
-        <style>
-        .metric-row {
-            background-color: #132C27;
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-            border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    
+    # Download Options
+    with st.expander("📥 Download Data"):
+        download_col1, download_col2 = st.columns(2)
+        
+        with download_col1:
+            # Prepare CSV data
+            if st.button("Download CSV"):
+                csv_data = prepare_download_data(stats, 'csv')
+                st.download_button(
+                    label="📥 Download CSV",
+                    data=csv_data,
+                    file_name=f"analytics_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                )
+        
+        with download_col2:
+            # Prepare Excel data
+            if st.button("Download Excel"):
+                excel_data = prepare_download_data(stats, 'excel')
+                st.download_button(
+                    label="📥 Download Excel",
+                    data=excel_data,
+                    file_name=f"analytics_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
+    # Display Metrics (existing code...)
     metrics_cols = st.columns(4)
     with metrics_cols[0]:
         st.metric(
@@ -1799,6 +1865,63 @@ def render_analytics(db: Database):
             margin=dict(l=20, r=20, t=30, b=50)
         )
         st.plotly_chart(fig, use_container_width=True)
+
+def prepare_download_data(stats: Dict[str, Any], format_type: str) -> bytes:
+    """Prepare analytics data for download"""
+    # Create DataFrame for daily stats
+    daily_df = pd.DataFrame([
+        {
+            'date': date,
+            'clicks': clicks,
+            'unique_visitors': stats['unique_visitors'],
+            'engagement_rate': stats['engagement_rate']
+        }
+        for date, clicks in stats['daily_stats'].items()
+    ])
+
+    # Create DataFrame for device stats
+    device_df = pd.DataFrame([
+        {'device': device, 'count': count}
+        for device, count in stats['device_stats'].items()
+    ])
+
+    # Create DataFrame for state stats
+    state_df = pd.DataFrame([
+        {'state': state, 'visits': visits}
+        for state, visits in stats['state_stats'].items()
+    ])
+
+    # Create Excel writer object
+    if format_type == 'excel':
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            daily_df.to_excel(writer, sheet_name='Daily Stats', index=False)
+            device_df.to_excel(writer, sheet_name='Device Stats', index=False)
+            state_df.to_excel(writer, sheet_name='Geographic Stats', index=False)
+            
+            # Add summary sheet
+            summary_data = {
+                'Metric': ['Total Clicks', 'Unique Visitors', 'Active Days', 'Engagement Rate'],
+                'Value': [
+                    stats['total_clicks'],
+                    stats['unique_visitors'],
+                    stats['active_days'],
+                    f"{stats['engagement_rate']:.2f}%"
+                ]
+            }
+            pd.DataFrame(summary_data).to_excel(writer, sheet_name='Summary', index=False)
+        
+        return output.getvalue()
+    else:  # CSV
+        # Combine all data into one CSV
+        output = BytesIO()
+        daily_df.to_csv(output, index=False)
+        output.write(b"\n\nDevice Statistics\n")
+        device_df.to_csv(output, index=False)
+        output.write(b"\n\nGeographic Statistics\n")
+        state_df.to_csv(output, index=False)
+        
+        return output.getvalue()
 
 if __name__ == "__main__":
     main() 
