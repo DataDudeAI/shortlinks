@@ -53,5 +53,10 @@ def get_styles():
             [data-testid="stMetricLabel"] {
                 color: #475569 !important;
             }
+
+            /* Sidebar text */
+            [data-testid="stSidebarNav"] {
+                color: #1E293B !important;
+            }
         </style>
     """ 
