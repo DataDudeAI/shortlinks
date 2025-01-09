@@ -45,101 +45,109 @@ def get_styles():
             }
 
             /* Button styling */
-            .stButton button {
+            button[kind="primary"] {
                 background-color: #10B981 !important;
+                border-color: #10B981 !important;
                 color: white !important;
-                border: none !important;
-                transition: all 0.3s ease !important;
+                transition: all 0.2s ease !important;
             }
             
-            .stButton button:hover {
+            button[kind="primary"]:hover {
                 background-color: #059669 !important;
-                transform: translateY(-2px) !important;
-                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2) !important;
+                border-color: #059669 !important;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
             }
 
             /* Table styling */
-            .stDataFrame {
-                border: 1px solid rgba(0,0,0,0.1) !important;
-                border-radius: 0.5rem !important;
-                overflow: hidden !important;
-            }
-            
-            div[data-testid="stDataFrame"] td,
-            div[data-testid="stDataFrame"] th {
-                color: #1E293B !important;
-                padding: 0.75rem 1rem !important;
-            }
-            
-            div[data-testid="stDataFrame"] tr:hover td {
-                background-color: rgba(16, 185, 129, 0.05) !important;
+            [data-testid="stTable"] {
+                border: 1px solid rgba(0,0,0,0.1);
+                border-radius: 8px;
+                overflow: hidden;
             }
 
-            /* Metric styling */
-            div[data-testid="stMetricValue"] {
-                color: #1E293B !important;
-                font-weight: 600 !important;
-            }
-            
-            div[data-testid="stMetricLabel"] {
-                color: #475569 !important;
+            [data-testid="stTable"] table {
+                border-collapse: separate;
+                border-spacing: 0;
             }
 
-            /* Sidebar styling */
-            section[data-testid="stSidebar"] {
-                background-color: white !important;
-                border-right: 1px solid rgba(0,0,0,0.1) !important;
-            }
-            
-            section[data-testid="stSidebar"] div[data-testid="stMarkdown"] {
-                color: #1E293B !important;
+            [data-testid="stTable"] th {
+                background: #F8FAFC;
+                color: #1E293B;
+                font-weight: 600;
+                padding: 12px 24px;
+                border-bottom: 1px solid rgba(0,0,0,0.1);
             }
 
-            /* Radio button styling */
-            div[data-testid="stRadio"] label {
-                color: #1E293B !important;
-                padding: 0.5rem 1rem !important;
-                border-radius: 0.375rem !important;
-                transition: all 0.3s ease !important;
-            }
-            
-            div[data-testid="stRadio"] label:hover {
-                background-color: rgba(16, 185, 129, 0.05) !important;
-                color: #10B981 !important;
-            }
-            
-            div[data-testid="stRadio"] label[data-checked="true"] {
-                background-color: #10B981 !important;
-                color: white !important;
+            [data-testid="stTable"] td {
+                color: #1E293B;
+                padding: 12px 24px;
+                transition: background-color 0.2s ease;
             }
 
-            /* Input field styling */
-            div[data-testid="stTextInput"] input,
-            div[data-testid="stSelectbox"] select {
-                color: #1E293B !important;
-                border-radius: 0.375rem !important;
-                border: 1px solid rgba(0,0,0,0.1) !important;
-                transition: all 0.3s ease !important;
-            }
-            
-            div[data-testid="stTextInput"] input:focus,
-            div[data-testid="stSelectbox"] select:focus {
-                border-color: #10B981 !important;
-                box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2) !important;
+            [data-testid="stTable"] tr:hover td {
+                background-color: rgba(16, 185, 129, 0.05);
             }
 
             /* Card styling */
-            div[data-testid="stCard"] {
-                background: white !important;
-                border-radius: 0.5rem !important;
-                padding: 1rem !important;
-                border: 1px solid rgba(0,0,0,0.1) !important;
-                transition: all 0.3s ease !important;
+            div.element-container {
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
             }
-            
-            div[data-testid="stCard"]:hover {
-                transform: translateY(-2px) !important;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+
+            div.element-container:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            }
+
+            /* Input styling */
+            input[type="text"],
+            input[type="number"],
+            select {
+                border: 1px solid rgba(0,0,0,0.1) !important;
+                border-radius: 6px !important;
+                padding: 8px 12px !important;
+                transition: all 0.2s ease !important;
+            }
+
+            input[type="text"]:focus,
+            input[type="number"]:focus,
+            select:focus {
+                border-color: #10B981 !important;
+                box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2) !important;
+                outline: none !important;
+            }
+
+            /* Radio button styling */
+            div[role="radiogroup"] label {
+                transition: all 0.2s ease !important;
+                border: 1px solid rgba(0,0,0,0.1) !important;
+                border-radius: 6px !important;
+                margin: 4px 0 !important;
+            }
+
+            div[role="radiogroup"] label:hover {
+                background-color: rgba(16, 185, 129, 0.05) !important;
+                border-color: #10B981 !important;
+            }
+
+            div[role="radiogroup"] label[data-checked="true"] {
+                background-color: #10B981 !important;
+                border-color: #10B981 !important;
+                color: white !important;
+            }
+
+            /* Metric styling */
+            div[data-testid="metric-container"] {
+                background-color: white;
+                border: 1px solid rgba(0,0,0,0.1);
+                border-radius: 8px;
+                padding: 16px;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+            }
+
+            div[data-testid="metric-container"]:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             }
         </style>
     """ 
