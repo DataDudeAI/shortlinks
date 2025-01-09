@@ -462,13 +462,30 @@ class Database:
             # Get URL information
             url_info = self.get_url_info(short_code)
             if not url_info:
+                logger.error(f"No URL found for short code: {short_code}")
                 return None
             
-            # Record the click
-            self.record_click(short_code, **kwargs)
+            # Record the click first
+            click_recorded = self.record_click(
+                short_code=short_code,
+                ip_address=kwargs.get('ip_address', '127.0.0.1'),
+                user_agent=kwargs.get('user_agent', 'Unknown'),
+                referrer=kwargs.get('referrer', 'Direct'),
+                state=kwargs.get('state', 'Unknown'),
+                device_type=kwargs.get('device_type', 'Unknown'),
+                browser=kwargs.get('browser', 'Unknown'),
+                os=kwargs.get('os', 'Unknown')
+            )
+            
+            if click_recorded:
+                logger.info(f"Click recorded successfully for {short_code}")
+            else:
+                logger.warning(f"Failed to record click for {short_code}")
             
             # Build and return redirect URL
-            return self.build_redirect_url(url_info)
+            redirect_url = self.build_redirect_url(url_info)
+            logger.info(f"Redirecting to: {redirect_url}")
+            return redirect_url
             
         except Exception as e:
             logger.error(f"Error handling redirect: {str(e)}")
@@ -602,7 +619,7 @@ class Database:
             # First update URL stats
             c.execute('''
                 UPDATE urls 
-                SET total_clicks = total_clicks + 1,
+                SET total_clicks = COALESCE(total_clicks, 0) + 1,
                     last_clicked = datetime('now')
                 WHERE short_code = ?
             ''', (short_code,))
