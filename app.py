@@ -1922,103 +1922,27 @@ def render_campaign_details(db: Database):
                     width="small",
                     format="%d"
                 ),
-                "created_at": st.column_config.DateColumn(
+                "created_at": st.column_config.DatetimeColumn(
                     "Created",
                     width="small",
                     format="MMM DD, YYYY"
                 ),
-                "last_clicked": st.column_config.DateColumn(
+                "last_clicked": st.column_config.DatetimeColumn(
                     "Last Click",
                     width="small",
                     format="MMM DD, YYYY"
                 ),
-                "actions": st.column_config.Column(
-                    "Actions",
-                    width="small"
+                "is_active": st.column_config.CheckboxColumn(
+                    "Active",
+                    width="small",
+                    help="Campaign status"
                 )
             },
             hide_index=True,
             use_container_width=True,
-            disabled=["short_url", "total_clicks", "created_at", "last_clicked", "actions"]
+            disabled=["short_url", "total_clicks", "created_at", "last_clicked"],
+            key="campaign_table"
         )
-
-        # Add action buttons for each campaign
-        for idx, row in df.iterrows():
-            col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
-            
-            with col1:
-                # QR Code button
-                if st.button("📱 QR", key=f"qr_{row['short_code']}"):
-                    qr = qrcode.QRCode(version=1, box_size=10, border=5)
-                    qr.add_data(row['short_url'])
-                    qr.make(fit=True)
-                    
-                    # Create QR code image
-                    img = qr.make_image(fill_color="black", back_color="white")
-                    img_bytes = BytesIO()
-                    img.save(img_bytes, format='PNG')
-                    
-                    # Display QR code
-                    st.image(img_bytes.getvalue(), caption=f"QR Code for {row['campaign_name']}")
-                    
-                    # Add download button
-                    st.download_button(
-                        label="Download QR Code",
-                        data=img_bytes.getvalue(),
-                        file_name=f"qr_{row['short_code']}.png",
-                        mime="image/png"
-                    )
-            
-            with col2:
-                # Copy URL button
-                if st.button("🔗 Copy", key=f"copy_{row['short_code']}"):
-                    st.code(row['short_url'])
-                    st.toast("URL copied to clipboard!")
-            
-            with col3:
-                # Analytics button
-                if st.button("📊 Stats", key=f"stats_{row['short_code']}"):
-                    stats = db.get_campaign_stats(row['short_code'])
-                    
-                    # Display campaign statistics
-                    st.markdown(f"#### 📈 Stats for {row['campaign_name']}")
-                    
-                    # Key metrics
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Total Clicks", stats['total_clicks'])
-                    m2.metric("Unique Visitors", stats['unique_visitors'])
-                    m3.metric("Conversion Rate", 
-                             f"{(stats['unique_visitors']/stats['total_clicks']*100):.1f}%" if stats['total_clicks'] else "0%")
-                    
-                    # Device breakdown
-                    st.markdown("##### 📱 Device Breakdown")
-                    if stats['device_stats']:
-                        fig = px.pie(
-                            values=list(stats['device_stats'].values()),
-                            names=list(stats['device_stats'].keys()),
-                            hole=0.4
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Daily clicks chart
-                    st.markdown("##### 📅 Daily Clicks")
-                    if stats['daily_clicks']:
-                        fig = px.line(
-                            x=list(stats['daily_clicks'].keys()),
-                            y=list(stats['daily_clicks'].values()),
-                            labels={'x': 'Date', 'y': 'Clicks'}
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-            
-            with col4:
-                # Delete button
-                if st.button("🗑️ Delete", key=f"del_{row['short_code']}"):
-                    if db.delete_campaign(row['short_code']):
-                        st.success(f"Deleted campaign: {row['campaign_name']}")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("Failed to delete campaign")
 
         # Handle edits to campaign details
         if not df.equals(edited_df):
@@ -2032,11 +1956,12 @@ def render_campaign_details(db: Database):
                     success = db.update_campaign(
                         short_code=df.loc[idx, 'short_code'],
                         campaign_name=row['campaign_name'],
-                        campaign_type=row['campaign_type']
+                        campaign_type=row['campaign_type'],
+                        is_active=row['is_active']
                     )
                     if success:
                         st.success(f"Updated campaign: {row['campaign_name']}")
-                        time.sleep(1)
+                        time.sleep(0.5)
                         st.rerun()
                     else:
                         st.error(f"Failed to update campaign: {row['campaign_name']}")
