@@ -32,10 +32,69 @@ class UI:
         """, unsafe_allow_html=True)
 
     def render_sidebar(self):
-        """Render the sidebar navigation"""
+        """Render enhanced sidebar navigation"""
         with st.sidebar:
-            st.markdown('<div class="sidebar-nav">', unsafe_allow_html=True)
-            
+            # Clean, modern header
+            st.markdown("""
+                <div style='text-align: left; padding: 1.5rem 1rem; border-bottom: 1px solid rgba(0,0,0,0.1)'>
+                    <div style='font-size: 1.2rem; font-weight: 600; color: #1E293B;'>
+                        🎯 Campaign Hub
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+            # Navigation styling
+            st.markdown("""
+                <style>
+                    section[data-testid="stSidebar"] > div {
+                        background-color: #FFFFFF;
+                    }
+                    
+                    .stRadio [role='radiogroup'] {
+                        gap: 0.5rem;
+                    }
+                    
+                    .stRadio label {
+                        background: transparent;
+                        padding: 0.75rem 1rem;
+                        border-radius: 0.5rem;
+                        border: 1px solid rgba(0,0,0,0.1);
+                        color: #1E293B !important;
+                        width: 100%;
+                        transition: all 0.2s ease;
+                    }
+                    
+                    .stRadio label:hover {
+                        background: rgba(16, 185, 129, 0.05);
+                        border-color: #10B981;
+                    }
+                    
+                    .stRadio label[data-checked="true"] {
+                        background: #10B981 !important;
+                        border-color: #10B981;
+                        color: white !important;
+                    }
+
+                    /* Make text darker for better visibility */
+                    .stMarkdown, .stMetric {
+                        color: #1E293B !important;
+                    }
+                    
+                    .stMarkdown h4 {
+                        color: #1E293B !important;
+                        font-weight: 600;
+                    }
+
+                    /* Button text color */
+                    .stButton button {
+                        color: #1E293B !important;
+                    }
+                    .stButton button:hover {
+                        color: white !important;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
+
             st.markdown("### 🎯 Campaign Manager")
             
             selected_page = st.radio(
