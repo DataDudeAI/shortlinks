@@ -410,66 +410,44 @@ class URLShortener:
                 else:
                     st.error("Failed to update campaign")
 
-    def create_campaign_url(self, form_data: dict) -> Optional[str]:
-        """Create a new campaign URL"""
+    def create_campaign_url(self, campaign_data: dict) -> Optional[str]:
+        """Create a campaign URL"""
         try:
-            url = form_data['url']
-            campaign_name = form_data['campaign_name']
+            logger.info("Starting campaign creation process...")
+            logger.info(f"URL: {campaign_data['url']}")
+            logger.info(f"Campaign Name: {campaign_data['campaign_name']}")
             
-            logger.info(f"Starting campaign creation process...")
-            logger.info(f"URL: {url}")
-            logger.info(f"Campaign Name: {campaign_name}")
-            
-            # Clean and validate URL
-            if not url.startswith(('http://', 'https://')):
-                url = 'https://' + url
-                logger.info(f"Modified URL: {url}")
-
             # Generate short code
-            short_code = form_data.get('custom_code') or self.generate_short_code()
+            short_code = self.generate_short_code()
             logger.info(f"Generated short code: {short_code}")
             
-            # Prepare UTM parameters
+            # Extract UTM parameters
             utm_params = {
-                'utm_source': form_data.get('utm_source'),
-                'utm_medium': form_data.get('utm_medium'),
-                'utm_campaign': form_data.get('utm_campaign'),
-                'utm_content': form_data.get('utm_content'),
-                'utm_term': form_data.get('utm_term')
+                'source': campaign_data.get('utm_source'),
+                'medium': campaign_data.get('utm_medium'),
+                'campaign': campaign_data.get('utm_campaign'),
+                'content': campaign_data.get('utm_content')
             }
-            
-            # Filter out empty UTM parameters
-            utm_params = {k: v for k, v in utm_params.items() if v}
             logger.info(f"UTM parameters: {utm_params}")
             
-            # Add UTM parameters to URL if any exist
-            if utm_params:
-                parsed_url = urlparse(url)
-                existing_params = parse_qs(parsed_url.query)
-                all_params = {**existing_params, **utm_params}
-                new_query = urlencode(all_params, doseq=True)
-                url = parsed_url._replace(query=new_query).geturl()
-                logger.info(f"Final URL with UTM parameters: {url}")
-            
-            # Save to database
+            # Create short URL
             logger.info("Attempting to save to database...")
-            success = self.db.save_campaign_url(
-                url=url,
-                short_code=short_code,
-                campaign_name=campaign_name,
-                campaign_type=form_data.get('campaign_type'),
+            short_code = self.db.create_short_url(
+                url=campaign_data['url'],
+                campaign_name=campaign_data['campaign_name'],
+                campaign_type=campaign_data['campaign_type'],
                 utm_params=utm_params
             )
             
-            if success:
-                logger.info(f"Successfully created campaign '{campaign_name}' with short code: {short_code}")
+            if short_code:
+                logger.info(f"Successfully created campaign with short code: {short_code}")
                 return short_code
             else:
                 logger.error("Database save operation failed")
                 return None
             
         except Exception as e:
-            logger.error(f"Error creating campaign URL: {str(e)}", exc_info=True)
+            logger.error(f"Error creating campaign URL: {str(e)}")
             return None
 
     def render_demographics(self, short_code: str):
@@ -1232,187 +1210,170 @@ def main():
         st.error("An error occurred. Please try refreshing the page.")
 
 def create_campaign():
-    """Create new campaign form"""
-    # Create two columns - form and table
-    form_col, table_col = st.columns([1, 1.5])
+    """Create new campaign form with green theme"""
+    st.markdown("### 🎯 Create Campaign")
     
-    with form_col:
-        st.markdown("### 🎯 Create New Campaign")
-        with st.form("create_campaign", clear_on_submit=True):
-            # Basic Information
-            st.markdown("#### Campaign Details")
-            campaign_name = st.text_input(
-                "Campaign Name",
-                placeholder="Enter campaign name",
-                help="A unique name for your campaign"
-            )
-            
-            campaign_type = st.selectbox(
-                "Campaign Type",
-                options=list(CAMPAIGN_TYPES.keys()),
-                format_func=lambda x: f"{CAMPAIGN_TYPES[x]} {x}",
-                help="Select the type of campaign"
-            )
-            
-            original_url = st.text_input(
-                "Original URL",
-                placeholder="https://your-url.com",
-                help="The URL you want to shorten"
-            )
+    # Add custom CSS for green theme
+    st.markdown("""
+        <style>
+        /* Green theme styles */
+        .stTextInput > div > div > input,
+        .stSelectbox > div > div > select {
+            border-color: #059669 !important;
+        }
+        .stTextInput > div > div > input:focus,
+        .stSelectbox > div > div > select:focus {
+            border-color: #047857 !important;
+            box-shadow: 0 0 0 1px #047857 !important;
+        }
+        .success-card {
+            background-color: #064E3B;
+            border: 1px solid #059669;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            color: white;
+        }
+        .success-card a {
+            color: #34D399;
+            text-decoration: none;
+            word-break: break-all;
+        }
+        .success-card a:hover {
+            text-decoration: underline;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # Campaign Creation Form
+    with st.form("campaign_form"):
+        # Basic Information
+        st.markdown("#### Campaign Details")
+        campaign_name = st.text_input(
+            "Campaign Name",
+            placeholder="Enter a unique name",
+            help="A descriptive name for your campaign"
+        )
+        
+        campaign_type = st.selectbox(
+            "Campaign Type",
+            options=list(CAMPAIGN_TYPES.keys()),
+            format_func=lambda x: f"{CAMPAIGN_TYPES[x]} {x}"
+        )
+        
+        original_url = st.text_input(
+            "Original URL",
+            placeholder="https://your-website.com",
+            help="The URL you want to track"
+        )
 
-            # UTM Parameters
-            st.markdown("#### 🎯 UTM Parameters")
+        # UTM Parameters (in an expander)
+        with st.expander("UTM Parameters", expanded=False):
             col1, col2 = st.columns(2)
             with col1:
-                utm_source = st.text_input(
-                    "Source",
-                    placeholder="e.g., facebook",
-                    help="The referrer (e.g., facebook, newsletter)"
-                )
-                utm_campaign = st.text_input(
-                    "Campaign",
-                    placeholder="e.g., summer_sale",
-                    help="Campaign specific identifier"
-                )
+                utm_source = st.text_input("Source", placeholder="e.g., facebook")
+                utm_campaign = st.text_input("Campaign Name", placeholder="e.g., summer_sale")
             with col2:
-                utm_medium = st.text_input(
-                    "Medium",
-                    placeholder="e.g., social",
-                    help="Marketing medium (e.g., cpc, social)"
-                )
-                utm_content = st.text_input(
-                    "Content",
-                    placeholder="e.g., blue_banner",
-                    help="Use to differentiate ads"
-                )
+                utm_medium = st.text_input("Medium", placeholder="e.g., social")
+                utm_content = st.text_input("Content", placeholder="e.g., banner_1")
 
-            # Advanced Options
-            with st.expander("Advanced Options", expanded=False):
-                generate_qr = st.checkbox("Generate QR Code", value=False)
-                custom_domain = st.text_input("Custom Domain", placeholder="your-domain.com")
+        # Options
+        generate_qr = st.checkbox("Generate QR Code", value=False)
 
-            # Submit button
-            submitted = st.form_submit_button("Create Campaign", type="primary")
+        # Submit button
+        submitted = st.form_submit_button(
+            "Create Campaign", 
+            type="primary",
+            use_container_width=True
+        )
 
-            if submitted:
-                if not campaign_name or not original_url:
-                    st.error("Please fill in all required fields")
-                    return
+    # Handle form submission
+    if submitted:
+        if not campaign_name or not original_url:
+            st.error("Please fill in all required fields")
+            return
 
-                try:
-                    # Create campaign
-                    short_code = shortener.create_campaign_url({
-                        'url': original_url,
-                        'campaign_name': campaign_name,
-                        'campaign_type': campaign_type,
-                        'utm_source': utm_source,
-                        'utm_medium': utm_medium,
-                        'utm_campaign': utm_campaign,
-                        'utm_content': utm_content
-                    })
-                    
-                    if short_code:
-                        st.success("Campaign created successfully!")
-                        
-                        # Show campaign details
-                        st.markdown("### Campaign Details")
-                        short_url = f"{BASE_URL}?r={short_code}"
-                        st.code(short_url, language="text")
-                        
-                        # Generate QR code if requested
-                        if generate_qr:
-                            qr = qrcode.QRCode(version=1, box_size=10, border=4)
-                            qr.add_data(short_url)
-                            qr.make(fit=True)
-                            img = qr.make_image(fill_color="black", back_color="white")
-                            
-                            # Convert to bytes
-                            img_bytes = BytesIO()
-                            img.save(img_bytes, format='PNG')
-                            st.image(img_bytes, caption="Scan QR Code", width=200)
-                    else:
-                        st.error("Error creating campaign")
-                        
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
-
-    # Campaign Management Table
-    with table_col:
-        st.markdown("### 📊 Campaign Management")
-        
-        # Get all campaigns
-        campaigns = shortener.db.get_all_campaigns()
-        if campaigns:
-            # Convert to DataFrame
-            df = pd.DataFrame(campaigns)
-            
-            # Add short URL column
-            df['short_url'] = df['short_code'].apply(lambda x: f"{BASE_URL}?r={x}")
-            
-            # Configure columns for editable table
-            edited_df = st.data_editor(
-                df,
-                column_config={
-                    "campaign_name": st.column_config.TextColumn(
-                        "Campaign",
-                        width="medium",
-                        help="Name of the campaign"
-                    ),
-                    "campaign_type": st.column_config.SelectboxColumn(
-                        "Type",
-                        width="small",
-                        options=list(CAMPAIGN_TYPES.keys())
-                    ),
-                    "short_url": st.column_config.LinkColumn(
-                        "Short URL",
-                        width="medium",
-                        help="Click to copy"
-                    ),
-                    "total_clicks": st.column_config.NumberColumn(
-                        "Clicks",
-                        width="small",
-                        format="%d"
-                    ),
-                    "created_at": st.column_config.TextColumn(
-                        "Created",
-                        width="small"
-                    ),
-                    "last_clicked": st.column_config.TextColumn(
-                        "Last Click",
-                        width="small"
-                    )
-                },
-                hide_index=True,
-                use_container_width=True,
-                num_rows="dynamic",
-                disabled=["short_url", "total_clicks", "created_at", "last_clicked"]
+        try:
+            # Create campaign
+            short_code = shortener.create_short_url(
+                url=original_url,
+                campaign_name=campaign_name,
+                campaign_type=campaign_type,
+                utm_params={
+                    'source': utm_source,
+                    'medium': utm_medium,
+                    'campaign': utm_campaign,
+                    'content': utm_content
+                }
             )
-
-            # Handle edits
-            if not df.equals(edited_df):
-                try:
-                    # Get the changed rows
-                    changed_mask = (df != edited_df).any(axis=1)
-                    changed_rows = edited_df[changed_mask]
+            
+            if short_code:
+                # Show success message with green theme
+                st.success("Campaign created successfully!")
+                
+                # Display campaign details in a green card
+                short_url = f"{BASE_URL}?r={short_code}"
+                
+                st.markdown(f"""
+                    <div class="success-card">
+                        <h4>🎯 Campaign Details</h4>
+                        <p><strong>Campaign Name:</strong> {campaign_name}</p>
+                        <p><strong>Short URL:</strong><br>
+                        <a href="{short_url}" target="_blank">{short_url}</a></p>
+                        <small>Click to test or copy to share</small>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                # Generate QR code if requested
+                if generate_qr:
+                    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+                    qr.add_data(short_url)
+                    qr.make(fit=True)
+                    img = qr.make_image(fill_color="black", back_color="white")
                     
-                    for idx, row in changed_rows.iterrows():
-                        # Update campaign in database
-                        success = shortener.db.update_campaign(
-                            short_code=df.loc[idx, 'short_code'],
-                            campaign_name=row['campaign_name'],
-                            campaign_type=row['campaign_type']
+                    # Convert to bytes
+                    img_bytes = BytesIO()
+                    img.save(img_bytes, format='PNG')
+                    
+                    # Display QR code with download button
+                    col1, col2 = st.columns([1, 2])
+                    with col1:
+                        st.image(img_bytes, caption="QR Code")
+                    with col2:
+                        st.download_button(
+                            "📥 Download QR Code",
+                            data=img_bytes.getvalue(),
+                            file_name=f"qr_{short_code}.png",
+                            mime="image/png"
                         )
-                        if success:
-                            st.success(f"Updated campaign: {row['campaign_name']}")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error(f"Failed to update campaign: {row['campaign_name']}")
-                    
-                except Exception as e:
-                    st.error(f"Error updating campaigns: {str(e)}")
-        else:
-            st.info("No campaigns created yet")
+
+        except Exception as e:
+            st.error(f"Error creating campaign: {str(e)}")
+
+    # Show existing campaigns
+    st.markdown("---")
+    st.markdown("### 📊 Recent Campaigns")
+    
+    campaigns = shortener.db.get_all_campaigns()
+    if campaigns:
+        df = pd.DataFrame(campaigns)
+        df['short_url'] = df['short_code'].apply(lambda x: f"{BASE_URL}?r={x}")
+        
+        st.dataframe(
+            df,
+            column_config={
+                "campaign_name": st.column_config.TextColumn("Campaign"),
+                "campaign_type": st.column_config.TextColumn("Type"),
+                "short_url": st.column_config.LinkColumn("Short URL"),
+                "total_clicks": st.column_config.NumberColumn("Clicks", format="%d"),
+                "created_at": st.column_config.DateColumn("Created", format="MMM DD, YYYY"),
+                "last_clicked": st.column_config.DateColumn("Last Click", format="MMM DD, YYYY")
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+    else:
+        st.info("No campaigns created yet")
 
 def render_settings(db: Database):
     """Render settings page"""
@@ -1922,6 +1883,168 @@ def prepare_download_data(stats: Dict[str, Any], format_type: str) -> bytes:
         state_df.to_csv(output, index=False)
         
         return output.getvalue()
+
+def render_campaign_details(db: Database):
+    """Render campaign details section"""
+    st.markdown("### 🎯 Campaign Details")
+
+    # Get all campaigns
+    campaigns = db.get_all_campaigns()
+    
+    if campaigns:
+        # Create a DataFrame for display
+        df = pd.DataFrame(campaigns)
+        
+        # Add short URL column
+        df['short_url'] = df['short_code'].apply(lambda x: f"{BASE_URL}?r={x}")
+        
+        # Configure columns for editable table
+        edited_df = st.data_editor(
+            df,
+            column_config={
+                "campaign_name": st.column_config.TextColumn(
+                    "Campaign",
+                    width="medium",
+                    help="Name of the campaign"
+                ),
+                "campaign_type": st.column_config.SelectboxColumn(
+                    "Type",
+                    width="small",
+                    options=list(CAMPAIGN_TYPES.keys())
+                ),
+                "short_url": st.column_config.LinkColumn(
+                    "Short URL",
+                    width="medium",
+                    help="Click to copy"
+                ),
+                "total_clicks": st.column_config.NumberColumn(
+                    "Clicks",
+                    width="small",
+                    format="%d"
+                ),
+                "created_at": st.column_config.DateColumn(
+                    "Created",
+                    width="small",
+                    format="MMM DD, YYYY"
+                ),
+                "last_clicked": st.column_config.DateColumn(
+                    "Last Click",
+                    width="small",
+                    format="MMM DD, YYYY"
+                ),
+                "actions": st.column_config.Column(
+                    "Actions",
+                    width="small"
+                )
+            },
+            hide_index=True,
+            use_container_width=True,
+            disabled=["short_url", "total_clicks", "created_at", "last_clicked", "actions"]
+        )
+
+        # Add action buttons for each campaign
+        for idx, row in df.iterrows():
+            col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+            
+            with col1:
+                # QR Code button
+                if st.button("📱 QR", key=f"qr_{row['short_code']}"):
+                    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+                    qr.add_data(row['short_url'])
+                    qr.make(fit=True)
+                    
+                    # Create QR code image
+                    img = qr.make_image(fill_color="black", back_color="white")
+                    img_bytes = BytesIO()
+                    img.save(img_bytes, format='PNG')
+                    
+                    # Display QR code
+                    st.image(img_bytes.getvalue(), caption=f"QR Code for {row['campaign_name']}")
+                    
+                    # Add download button
+                    st.download_button(
+                        label="Download QR Code",
+                        data=img_bytes.getvalue(),
+                        file_name=f"qr_{row['short_code']}.png",
+                        mime="image/png"
+                    )
+            
+            with col2:
+                # Copy URL button
+                if st.button("🔗 Copy", key=f"copy_{row['short_code']}"):
+                    st.code(row['short_url'])
+                    st.toast("URL copied to clipboard!")
+            
+            with col3:
+                # Analytics button
+                if st.button("📊 Stats", key=f"stats_{row['short_code']}"):
+                    stats = db.get_campaign_stats(row['short_code'])
+                    
+                    # Display campaign statistics
+                    st.markdown(f"#### 📈 Stats for {row['campaign_name']}")
+                    
+                    # Key metrics
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Total Clicks", stats['total_clicks'])
+                    m2.metric("Unique Visitors", stats['unique_visitors'])
+                    m3.metric("Conversion Rate", 
+                             f"{(stats['unique_visitors']/stats['total_clicks']*100):.1f}%" if stats['total_clicks'] else "0%")
+                    
+                    # Device breakdown
+                    st.markdown("##### 📱 Device Breakdown")
+                    if stats['device_stats']:
+                        fig = px.pie(
+                            values=list(stats['device_stats'].values()),
+                            names=list(stats['device_stats'].keys()),
+                            hole=0.4
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Daily clicks chart
+                    st.markdown("##### 📅 Daily Clicks")
+                    if stats['daily_clicks']:
+                        fig = px.line(
+                            x=list(stats['daily_clicks'].keys()),
+                            y=list(stats['daily_clicks'].values()),
+                            labels={'x': 'Date', 'y': 'Clicks'}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+            
+            with col4:
+                # Delete button
+                if st.button("🗑️ Delete", key=f"del_{row['short_code']}"):
+                    if db.delete_campaign(row['short_code']):
+                        st.success(f"Deleted campaign: {row['campaign_name']}")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Failed to delete campaign")
+
+        # Handle edits to campaign details
+        if not df.equals(edited_df):
+            try:
+                # Get the changed rows
+                changed_mask = (df != edited_df).any(axis=1)
+                changed_rows = edited_df[changed_mask]
+                
+                for idx, row in changed_rows.iterrows():
+                    # Update campaign in database
+                    success = db.update_campaign(
+                        short_code=df.loc[idx, 'short_code'],
+                        campaign_name=row['campaign_name'],
+                        campaign_type=row['campaign_type']
+                    )
+                    if success:
+                        st.success(f"Updated campaign: {row['campaign_name']}")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error(f"Failed to update campaign: {row['campaign_name']}")
+                
+            except Exception as e:
+                st.error(f"Error updating campaigns: {str(e)}")
+    else:
+        st.info("No campaigns created yet")
 
 if __name__ == "__main__":
     main() 
