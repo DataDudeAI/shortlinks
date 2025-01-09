@@ -612,20 +612,20 @@ class Database:
                 INSERT INTO analytics (
                     short_code, clicked_at, ip_address, user_agent,
                     referrer, state, device_type, browser, os
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 short_code,
-                kwargs.get('clicked_at') or datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                kwargs.get('ip_address'),
-                kwargs.get('user_agent'),
-                kwargs.get('referrer'),
-                kwargs.get('state'),
-                kwargs.get('device_type'),
-                kwargs.get('browser'),
-                kwargs.get('os')
+                kwargs.get('ip_address', '127.0.0.1'),
+                kwargs.get('user_agent', 'Unknown'),
+                kwargs.get('referrer', 'Direct'),
+                kwargs.get('state', 'Unknown'),
+                kwargs.get('device_type', 'Unknown'),
+                kwargs.get('browser', 'Unknown'),
+                kwargs.get('os', 'Unknown')
             ))
             
             conn.commit()
+            logger.info(f"Click recorded for {short_code}")
             return True
             
         except Exception as e:
@@ -845,14 +845,36 @@ class Database:
                     u.original_url,
                     u.total_clicks,
                     datetime(u.created_at) as created_at,
-                    datetime(u.last_clicked) as last_clicked,
-                    u.is_active
+                    datetime(COALESCE(u.last_clicked, u.created_at)) as last_clicked,
+                    u.is_active,
+                    COUNT(DISTINCT a.ip_address) as unique_visitors
                 FROM urls u
+                LEFT JOIN analytics a ON u.short_code = a.short_code
+                GROUP BY 
+                    u.id,
+                    u.campaign_name,
+                    u.campaign_type,
+                    u.short_code,
+                    u.original_url,
+                    u.total_clicks,
+                    u.created_at,
+                    u.last_clicked,
+                    u.is_active
                 ORDER BY u.created_at DESC
             """)
             
             columns = [description[0] for description in c.description]
-            return [dict(zip(columns, row)) for row in c.fetchall()]
+            campaigns = []
+            for row in c.fetchall():
+                campaign_dict = dict(zip(columns, row))
+                # Ensure total_clicks is never None
+                campaign_dict['total_clicks'] = campaign_dict['total_clicks'] or 0
+                # Format dates properly
+                campaign_dict['created_at'] = campaign_dict['created_at']
+                campaign_dict['last_clicked'] = campaign_dict['last_clicked'] if campaign_dict['last_clicked'] != campaign_dict['created_at'] else None
+                campaigns.append(campaign_dict)
+            
+            return campaigns
             
         except Exception as e:
             logger.error(f"Error getting campaigns: {str(e)}")
