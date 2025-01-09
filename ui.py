@@ -11,7 +11,7 @@ import uuid
 from io import BytesIO
 import base64
 import logging
-from ui_styles import load_ui_styles
+from ui_styles import get_styles, get_theme_colors
 
 # Define BASE_URL
 BASE_URL = "https://shortlinksnandan.streamlit.app"
@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 class UI:
     def __init__(self, shortener):
         self.shortener = shortener
+        # Apply base styles
+        st.markdown(get_styles(), unsafe_allow_html=True)
 
     def render_header(self):
         """Render the main header"""
@@ -72,24 +74,6 @@ class UI:
                     .stRadio label[data-checked="true"] {
                         background: #10B981 !important;
                         border-color: #10B981;
-                        color: white !important;
-                    }
-
-                    /* Make text darker for better visibility */
-                    .stMarkdown, .stMetric {
-                        color: #1E293B !important;
-                    }
-                    
-                    .stMarkdown h4 {
-                        color: #1E293B !important;
-                        font-weight: 600;
-                    }
-
-                    /* Button text color */
-                    .stButton button {
-                        color: #1E293B !important;
-                    }
-                    .stButton button:hover {
                         color: white !important;
                     }
                 </style>
