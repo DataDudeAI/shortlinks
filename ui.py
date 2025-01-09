@@ -44,7 +44,12 @@ class UI:
             
             selected_page = st.radio(
                 "Navigation",
-                ["📊 Dashboard", "🔗 Create Campaign", "📈 Analytics", "⚙️ Settings"],
+                [
+                    "📊 Dashboard",
+                    "🔗 Create Campaign",
+                    "📈 Analytics",
+                    "⚙️ Settings"
+                ],
                 label_visibility="collapsed"
             )
 
