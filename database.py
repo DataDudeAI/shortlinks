@@ -52,7 +52,7 @@ class Database:
             c.execute("DROP TABLE IF EXISTS analytics")
             c.execute("DROP TABLE IF EXISTS urls")
             
-            # Create URLs table without UNIQUE constraint on campaign_name
+            # Create URLs table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS urls (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,16 +68,16 @@ class Database:
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     last_clicked DATETIME,
                     total_clicks INTEGER DEFAULT 0,
-                    is_active BOOLEAN DEFAULT 1
+                    is_active INTEGER DEFAULT 1
                 )
             ''')
             
-            # Create analytics table with proper date handling
+            # Create Analytics table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS analytics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     short_code TEXT NOT NULL,
-                    clicked_at DATE NOT NULL,
+                    clicked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     ip_address TEXT,
                     user_agent TEXT,
                     referrer TEXT,
@@ -85,16 +85,10 @@ class Database:
                     device_type TEXT,
                     browser TEXT,
                     os TEXT,
-                    FOREIGN KEY (short_code) REFERENCES urls(short_code)
+                    FOREIGN KEY (short_code) REFERENCES urls (short_code)
                 )
             ''')
-
-            # After creating tables
-            c.execute('''
-                CREATE INDEX IF NOT EXISTS idx_analytics_date 
-                ON analytics(clicked_at)
-            ''')
-
+            
             conn.commit()
             logger.info("Database tables initialized successfully")
             
@@ -750,33 +744,37 @@ class Database:
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # First verify the URL exists and is active
-            c.execute("SELECT 1 FROM urls WHERE short_code = ? AND is_active = 1", (short_code,))
-            if not c.fetchone():
-                logger.error(f"No active URL found for short code: {short_code}")
+            # Begin transaction
+            conn.execute("BEGIN TRANSACTION")
+            
+            # First verify the URL exists
+            c.execute("SELECT id FROM urls WHERE short_code = ?", (short_code,))
+            url_record = c.fetchone()
+            if not url_record:
+                logger.error(f"No URL found for short code: {short_code}")
                 return False
 
-            # Update URL stats - increment total_clicks and update last_clicked
+            # Update URL stats
             c.execute('''
                 UPDATE urls 
-                SET total_clicks = COALESCE(total_clicks, 0) + 1,
-                    last_clicked = datetime('now')
+                SET total_clicks = total_clicks + 1,
+                    last_clicked = datetime('now', 'localtime')
                 WHERE short_code = ?
             ''', (short_code,))
 
-            # Insert analytics data
+            # Insert analytics record
             c.execute('''
                 INSERT INTO analytics (
-                    short_code, 
-                    clicked_at, 
-                    ip_address, 
+                    short_code,
+                    clicked_at,
+                    ip_address,
                     user_agent,
-                    referrer, 
-                    state, 
-                    device_type, 
-                    browser, 
+                    referrer,
+                    state,
+                    device_type,
+                    browser,
                     os
-                ) VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, datetime('now', 'localtime'), ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 short_code,
                 kwargs.get('ip_address', '127.0.0.1'),
@@ -788,8 +786,9 @@ class Database:
                 kwargs.get('os', 'Unknown')
             ))
             
+            # Commit transaction
             conn.commit()
-            logger.info(f"Click recorded for {short_code} with data: {kwargs}")
+            logger.info(f"Click recorded for {short_code}")
             return True
             
         except Exception as e:
@@ -1113,5 +1112,36 @@ class Database:
             logger.error(f"Error saving campaign URL: {str(e)}")
             conn.rollback()
             return False
+        finally:
+            conn.close()
+
+    def get_url_stats(self, short_code: str) -> Dict[str, Any]:
+        """Get statistics for a specific URL"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            c.execute("""
+                SELECT 
+                    u.total_clicks,
+                    COUNT(DISTINCT a.ip_address) as unique_visitors,
+                    u.last_clicked
+                FROM urls u
+                LEFT JOIN analytics a ON u.short_code = a.short_code
+                WHERE u.short_code = ?
+                GROUP BY u.id
+            """, (short_code,))
+            
+            row = c.fetchone()
+            if row:
+                return {
+                    'total_clicks': row[0] or 0,
+                    'unique_visitors': row[1] or 0,
+                    'last_clicked': row[2]
+                }
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting URL stats: {str(e)}")
+            return None
         finally:
             conn.close()
