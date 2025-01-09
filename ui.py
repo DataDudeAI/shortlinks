@@ -34,78 +34,34 @@ class UI:
         """, unsafe_allow_html=True)
 
     def render_sidebar(self):
-        """Render enhanced sidebar navigation"""
+        """Render the sidebar navigation"""
         with st.sidebar:
-            # Clean, modern header
-            st.markdown("""
-                <div style='text-align: left; padding: 1.5rem 1rem; border-bottom: 1px solid rgba(0,0,0,0.1)'>
-                    <div style='font-size: 1.2rem; font-weight: 600; color: #1E293B;'>
-                        🎯 Campaign Hub
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
+            st.image(
+                "https://via.placeholder.com/150x50?text=Logo",
+                use_container_width=True
+            )
+            
+            # Navigation
+            selected_page = st.radio(
+                "Navigation",
+                ["🏠 Dashboard", "🔗 Create Campaign", "📈 Analytics", "⚙️ Settings"],
+                label_visibility="collapsed"
+            )
 
-            # Navigation styling
+            # Add styling for better text visibility
             st.markdown("""
                 <style>
-                    section[data-testid="stSidebar"] > div {
-                        background-color: #FFFFFF;
-                    }
-                    
-                    .stRadio [role='radiogroup'] {
-                        gap: 0.5rem;
-                    }
-                    
                     .stRadio label {
-                        background: transparent;
-                        padding: 0.75rem 1rem;
-                        border-radius: 0.5rem;
-                        border: 1px solid rgba(0,0,0,0.1);
                         color: #1E293B !important;
-                        width: 100%;
-                        transition: all 0.2s ease;
                     }
-                    
                     .stRadio label:hover {
-                        background: rgba(16, 185, 129, 0.05);
-                        border-color: #10B981;
+                        color: #10B981 !important;
                     }
-                    
                     .stRadio label[data-checked="true"] {
-                        background: #10B981 !important;
-                        border-color: #10B981;
                         color: white !important;
                     }
                 </style>
             """, unsafe_allow_html=True)
-
-            st.markdown("### 🎯 Campaign Manager")
-            
-            selected_page = st.radio(
-                "Navigation",
-                [
-                    "📊 Dashboard",
-                    "🔗 Create Campaign",
-                    "📈 Analytics",
-                    "⚙️ Settings"
-                ],
-                index=0,
-                key="nav",
-                label_visibility="collapsed"
-            )
-
-            st.markdown("<hr/>", unsafe_allow_html=True)
-
-            # Quick Actions
-            st.markdown("""
-                <div class="sidebar-section">
-                    <h4 style='color: #1E293B;'>Quick Actions</h4>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            if st.button("➕ New Campaign", key="new_campaign_btn", use_container_width=True):
-                st.session_state['selected_page'] = "🔗 Create Campaign"
-                st.rerun()
 
             return selected_page
 
