@@ -558,7 +558,7 @@ class Database:
             # Generate unique short code
             short_code = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
             
-            # Check if short_code exists and regenerate if needed
+            # Check if short_code exists
             while True:
                 c.execute("SELECT 1 FROM urls WHERE short_code = ?", (short_code,))
                 if not c.fetchone():
@@ -594,7 +594,7 @@ class Database:
             ))
             
             conn.commit()
-            logger.info(f"Campaign {campaign_name} created successfully with short code: {short_code}")
+            logger.info(f"Campaign created successfully: {campaign_name} ({short_code})")
             return short_code
             
         except Exception as e:
@@ -606,10 +606,111 @@ class Database:
             conn.close()
 
     def get_dashboard_stats(self) -> Dict[str, Any]:
-        """Get dashboard statistics for last 7 days"""
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=7)
-        return self.get_analytics_summary(start_date=start_date, end_date=end_date)
+        """Get dashboard statistics"""
+        conn = self.get_connection()
+        c = conn.cursor()
+        try:
+            # Get basic stats including active campaigns
+            c.execute("""
+                SELECT 
+                    COUNT(*) as total_campaigns,
+                    SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_campaigns,
+                    SUM(total_clicks) as total_clicks,
+                    COUNT(DISTINCT a.ip_address) as unique_visitors
+                FROM urls u
+                LEFT JOIN analytics a ON u.short_code = a.short_code
+            """)
+            
+            row = c.fetchone()
+            stats = {
+                'total_campaigns': row[0] or 0,
+                'active_campaigns': row[1] or 0,
+                'total_clicks': row[2] or 0,
+                'unique_visitors': row[3] or 0,
+                'engagement_rate': (row[3] / row[2] * 100) if row[2] and row[3] else 0
+            }
+
+            # Get daily stats for last 7 days
+            c.execute("""
+                WITH RECURSIVE dates(date) AS (
+                    SELECT date('now', '-7 days')
+                    UNION ALL
+                    SELECT date(date, '+1 day')
+                    FROM dates
+                    WHERE date < date('now')
+                )
+                SELECT 
+                    dates.date,
+                    COUNT(DISTINCT a.id) as clicks
+                FROM dates
+                LEFT JOIN analytics a ON date(a.clicked_at) = dates.date
+                GROUP BY dates.date
+                ORDER BY dates.date
+            """)
+            stats['daily_stats'] = dict(c.fetchall())
+
+            # Get device stats
+            c.execute("""
+                SELECT 
+                    COALESCE(device_type, 'Unknown') as device,
+                    COUNT(*) as count
+                FROM analytics
+                GROUP BY device_type
+            """)
+            stats['device_stats'] = dict(c.fetchall())
+
+            # Get state stats
+            c.execute("""
+                SELECT 
+                    COALESCE(state, 'Unknown') as state,
+                    COUNT(*) as count
+                FROM analytics
+                GROUP BY state
+            """)
+            stats['state_stats'] = dict(c.fetchall())
+
+            # Get recent activities
+            c.execute("""
+                SELECT 
+                    u.campaign_name,
+                    datetime(a.clicked_at) as clicked_at,
+                    COALESCE(a.state, 'Unknown') as state,
+                    COALESCE(a.device_type, 'Unknown') as device_type,
+                    u.campaign_type
+                FROM analytics a
+                JOIN urls u ON a.short_code = u.short_code
+                ORDER BY a.clicked_at DESC
+                LIMIT 5
+            """)
+            
+            stats['recent_activities'] = [
+                {
+                    'campaign_name': row[0],
+                    'clicked_at': row[1],
+                    'state': row[2],
+                    'device_type': row[3],
+                    'campaign_type': row[4]
+                }
+                for row in c.fetchall()
+            ]
+
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Error getting dashboard stats: {str(e)}")
+            return {
+                'total_campaigns': 0,
+                'active_campaigns': 0,
+                'total_clicks': 0,
+                'unique_visitors': 0,
+                'engagement_rate': 0,
+                'daily_stats': {},
+                'device_stats': {},
+                'state_stats': {},
+                'recent_activities': []
+            }
+        finally:
+            conn.close()
 
     def record_click(self, short_code: str, **kwargs) -> bool:
         """Record a click for a short URL"""
@@ -624,6 +725,10 @@ class Database:
                 WHERE short_code = ?
             ''', (short_code,))
             
+            if c.rowcount == 0:
+                logger.error(f"No URL found for short code: {short_code}")
+                return False
+
             # Then insert click data
             c.execute('''
                 INSERT INTO analytics (
