@@ -16,42 +16,27 @@ logger = logging.getLogger(__name__)
 class Database:
     """Database handler for URL shortener with analytics"""
     
-    def __init__(self):
-        """Initialize database connection and create tables if they don't exist"""
-        self.db_path = "urls.db"
-        
-        try:
-            # Always initialize fresh database when reset flag exists
-            if os.path.exists(".db_reset"):
-                if os.path.exists(self.db_path):
-                    os.remove(self.db_path)
-                logger.info("Creating fresh database after reset...")
-                self.initialize_database()
-                os.remove(".db_reset")  # Remove reset flag
-                return
-
-            # Normal initialization
-            if not os.path.exists(self.db_path):
-                logger.info("Creating new database...")
-                self.initialize_database()
-            
-        except Exception as e:
-            logger.error(f"Database initialization error: {str(e)}")
-            raise
+    def __init__(self, db_path="urls.db"):
+        """Initialize database connection"""
+        self.db_path = db_path
+        # Create tables if they don't exist
+        self.initialize_database()
 
     def get_connection(self):
-        """Get database connection"""
-        return sqlite3.connect(self.db_path)
+        """Get a database connection"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+        except Exception as e:
+            logger.error(f"Error connecting to database: {str(e)}")
+            raise
 
     def initialize_database(self):
         """Create necessary database tables"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Drop existing tables if they exist
-            c.execute("DROP TABLE IF EXISTS analytics")
-            c.execute("DROP TABLE IF EXISTS urls")
-            
             # Create URLs table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS urls (
