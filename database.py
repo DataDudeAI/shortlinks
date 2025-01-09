@@ -644,9 +644,17 @@ class Database:
             # Build update query dynamically based on provided fields
             update_fields = []
             values = []
+            
+            # Map incoming field names to database column names
+            field_mapping = {
+                'campaign_name': 'campaign_name',
+                'campaign_type': 'campaign_type',
+                'is_active': 'is_active'
+            }
+            
             for key, value in kwargs.items():
-                if value is not None:
-                    update_fields.append(f"{key} = ?")
+                if key in field_mapping and value is not None:
+                    update_fields.append(f"{field_mapping[key]} = ?")
                     values.append(value)
             
             if not update_fields:
@@ -663,9 +671,13 @@ class Database:
             """
             c.execute(query, values)
             
-            conn.commit()
-            logger.info(f"Campaign {short_code} updated successfully")
-            return True
+            if c.rowcount > 0:
+                conn.commit()
+                logger.info(f"Campaign {short_code} updated successfully")
+                return True
+            else:
+                logger.error(f"No campaign found with short_code: {short_code}")
+                return False
             
         except Exception as e:
             logger.error(f"Error updating campaign: {str(e)}")
@@ -832,11 +844,10 @@ class Database:
                     u.short_code,
                     u.original_url,
                     u.total_clicks,
-                    date(u.created_at) as created_at,
-                    date(MAX(a.clicked_at)) as last_clicked
+                    datetime(u.created_at) as created_at,
+                    datetime(u.last_clicked) as last_clicked,
+                    u.is_active
                 FROM urls u
-                LEFT JOIN analytics a ON u.short_code = a.short_code
-                GROUP BY u.id
                 ORDER BY u.created_at DESC
             """)
             
