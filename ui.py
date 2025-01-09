@@ -36,32 +36,17 @@ class UI:
     def render_sidebar(self):
         """Render the sidebar navigation"""
         with st.sidebar:
-            st.image(
-                "https://via.placeholder.com/150x50?text=Logo",
-                use_container_width=True
-            )
+            st.markdown("""
+                <div class="sidebar-header">
+                    <h2>🎯 Campaign Hub</h2>
+                </div>
+            """, unsafe_allow_html=True)
             
-            # Navigation
             selected_page = st.radio(
                 "Navigation",
-                ["🏠 Dashboard", "🔗 Create Campaign", "📈 Analytics", "⚙️ Settings"],
+                ["📊 Dashboard", "🔗 Create Campaign", "📈 Analytics", "⚙️ Settings"],
                 label_visibility="collapsed"
             )
-
-            # Add styling for better text visibility
-            st.markdown("""
-                <style>
-                    .stRadio label {
-                        color: #1E293B !important;
-                    }
-                    .stRadio label:hover {
-                        color: #10B981 !important;
-                    }
-                    .stRadio label[data-checked="true"] {
-                        color: white !important;
-                    }
-                </style>
-            """, unsafe_allow_html=True)
 
             return selected_page
 
@@ -74,8 +59,13 @@ class UI:
         """, unsafe_allow_html=True)
 
     def render_metrics(self, metrics: dict):
-        """Render dashboard metrics"""
+        """Render dashboard metrics with colored cards"""
         cols = st.columns(len(metrics))
         for col, (label, value) in zip(cols, metrics.items()):
             with col:
-                st.metric(label, value)
+                st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-value">{value}</div>
+                        <div class="metric-label">{label}</div>
+                    </div>
+                """, unsafe_allow_html=True)
