@@ -533,7 +533,7 @@ class Database:
             finally:
                 c.close()
 
-    def create_short_url(self, url: str, campaign_name: str, campaign_type: str = None, utm_params: dict = None) -> str:
+    def create_short_url(self, url: str, campaign_name: str, campaign_type: str = None, utm_params: dict = None) -> Optional[str]:
         """Create a new short URL"""
         conn = self.get_connection()
         c = conn.cursor()
@@ -541,17 +541,14 @@ class Database:
             # Generate unique short code
             short_code = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
             
-            # Check if short_code exists
+            # Check if short_code exists and regenerate if needed
             while True:
                 c.execute("SELECT 1 FROM urls WHERE short_code = ?", (short_code,))
                 if not c.fetchone():
                     break
                 short_code = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
 
-            # Parse URL for UTM parameters
-            parsed_url = urlparse(url)
-            query_params = parse_qs(parsed_url.query)
-            
+            # Insert new URL
             c.execute("""
                 INSERT INTO urls (
                     short_code, 
@@ -580,7 +577,7 @@ class Database:
             ))
             
             conn.commit()
-            logger.info(f"Campaign {campaign_name} created successfully")
+            logger.info(f"Campaign {campaign_name} created successfully with short code: {short_code}")
             return short_code
             
         except Exception as e:
