@@ -831,11 +831,11 @@ class Database:
                     u.campaign_type,
                     u.short_code,
                     u.original_url,
-                    COUNT(a.id) as total_clicks,
+                    u.total_clicks,
                     date(u.created_at) as created_at,
                     date(MAX(a.clicked_at)) as last_clicked
                 FROM urls u
-                LEFT JOIN analytics a ON u.short_code = u.short_code
+                LEFT JOIN analytics a ON u.short_code = a.short_code
                 GROUP BY u.id
                 ORDER BY u.created_at DESC
             """)
