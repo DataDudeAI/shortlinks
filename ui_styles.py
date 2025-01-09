@@ -1,82 +1,57 @@
-import streamlit as st
-import pandas as pd
-from typing import Dict, Any, List
-from datetime import datetime, timedelta
-import io
-import plotly.express as px
-import qrcode
-from PIL import Image
-import json
-import uuid
-from io import BytesIO
-import base64
-import logging
-from ui_styles import load_ui_styles
+def get_theme_colors(theme='light'):
+    """Get color scheme based on theme"""
+    return {
+        'light': {
+            'background': '#F8FAFC',
+            'secondary_background': '#FFFFFF',
+            'card_background': '#FFFFFF',
+            'text': '#1E293B',
+            'secondary_text': '#475569',
+        },
+        'dark': {
+            'background': '#0B0F19',
+            'secondary_background': '#151B28',
+            'card_background': '#1A2332',
+            'text': '#E2E8F0',
+            'secondary_text': '#94A3B8',
+        }
+    }[theme]
 
-# Define BASE_URL
-BASE_URL = "https://shortlinksnandan.streamlit.app"
-
-# Configure logger
-logger = logging.getLogger(__name__)
-
-class UI:
-    def __init__(self, shortener):
-        self.shortener = shortener
-
-    def render_header(self):
-        """Render the main header"""
-        st.markdown("""
-            <div class="main-header">
-                <h1>Campaign Dashboard</h1>
-            </div>
-        """, unsafe_allow_html=True)
-
-    def render_sidebar(self):
-        """Render the sidebar navigation"""
-        with st.sidebar:
-            st.markdown('<div class="sidebar-nav">', unsafe_allow_html=True)
+def get_styles():
+    """Get base styles for the application"""
+    return """
+        <style>
+            /* Text colors for better visibility */
+            .stMarkdown, .stMetric {
+                color: #1E293B !important;
+            }
             
-            st.markdown("### 🎯 Campaign Manager")
+            .stMarkdown h4 {
+                color: #1E293B !important;
+                font-weight: 600;
+            }
+
+            /* Button text color */
+            .stButton button {
+                color: #1E293B !important;
+            }
             
-            selected_page = st.radio(
-                "Navigation",
-                [
-                    "📊 Dashboard",
-                    "🔗 Create Campaign",
-                    "📈 Analytics",
-                    "⚙️ Settings"
-                ],
-                index=0,
-                key="nav",
-                label_visibility="collapsed"
-            )
+            .stButton button:hover {
+                color: white !important;
+            }
 
-            st.markdown("<hr/>", unsafe_allow_html=True)
+            /* Table text colors */
+            .stDataFrame td, .stDataFrame th {
+                color: #1E293B !important;
+            }
 
-            # Quick Actions
-            st.markdown("""
-                <div class="sidebar-section">
-                    <h4>Quick Actions</h4>
-                </div>
-            """, unsafe_allow_html=True)
+            /* Metric colors */
+            [data-testid="stMetricValue"] {
+                color: #1E293B !important;
+            }
             
-            if st.button("➕ New Campaign", key="new_campaign_btn", use_container_width=True):
-                st.session_state['selected_page'] = "🔗 Create Campaign"
-                st.rerun()
-
-        return selected_page
-
-    def render_page_header(self, title: str):
-        """Render page header without extra space"""
-        st.markdown(f"""
-            <div class="main-header">
-                <h1>{title}</h1>
-            </div>
-        """, unsafe_allow_html=True)
-
-    def render_metrics(self, metrics: dict):
-        """Render dashboard metrics"""
-        cols = st.columns(len(metrics))
-        for col, (label, value) in zip(cols, metrics.items()):
-            with col:
-                st.metric(label, value)
+            [data-testid="stMetricLabel"] {
+                color: #475569 !important;
+            }
+        </style>
+    """ 
