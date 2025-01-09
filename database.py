@@ -16,27 +16,42 @@ logger = logging.getLogger(__name__)
 class Database:
     """Database handler for URL shortener with analytics"""
     
-    def __init__(self, db_path="urls.db"):
-        """Initialize database connection"""
-        self.db_path = db_path
-        # Create tables if they don't exist
-        self.initialize_database()
+    def __init__(self):
+        """Initialize database connection and create tables if they don't exist"""
+        self.db_path = "urls.db"
+        
+        try:
+            # Always initialize fresh database when reset flag exists
+            if os.path.exists(".db_reset"):
+                if os.path.exists(self.db_path):
+                    os.remove(self.db_path)
+                logger.info("Creating fresh database after reset...")
+                self.initialize_database()
+                os.remove(".db_reset")  # Remove reset flag
+                return
+
+            # Normal initialization
+            if not os.path.exists(self.db_path):
+                logger.info("Creating new database...")
+                self.initialize_database()
+            
+        except Exception as e:
+            logger.error(f"Database initialization error: {str(e)}")
+            raise
 
     def get_connection(self):
-        """Get a database connection"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            return conn
-        except Exception as e:
-            logger.error(f"Error connecting to database: {str(e)}")
-            raise
+        """Get database connection"""
+        return sqlite3.connect(self.db_path)
 
     def initialize_database(self):
         """Create necessary database tables"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
+            # Drop existing tables if they exist
+            c.execute("DROP TABLE IF EXISTS analytics")
+            c.execute("DROP TABLE IF EXISTS urls")
+            
             # Create URLs table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS urls (
@@ -53,16 +68,17 @@ class Database:
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     last_clicked DATETIME,
                     total_clicks INTEGER DEFAULT 0,
-                    is_active INTEGER DEFAULT 1
+                    is_active BOOLEAN DEFAULT 1,
+                    UNIQUE(campaign_name)
                 )
             ''')
             
-            # Create Analytics table
+            # Create analytics table with time_on_page column
             c.execute('''
                 CREATE TABLE IF NOT EXISTS analytics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     short_code TEXT NOT NULL,
-                    clicked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    clicked_at DATETIME NOT NULL,
                     ip_address TEXT,
                     user_agent TEXT,
                     referrer TEXT,
@@ -70,10 +86,11 @@ class Database:
                     device_type TEXT,
                     browser TEXT,
                     os TEXT,
-                    FOREIGN KEY (short_code) REFERENCES urls (short_code)
+                    time_on_page INTEGER DEFAULT 0,
+                    FOREIGN KEY (short_code) REFERENCES urls(short_code)
                 )
             ''')
-            
+
             conn.commit()
             logger.info("Database tables initialized successfully")
             
@@ -84,182 +101,116 @@ class Database:
         finally:
             conn.close()
 
-    def get_analytics_summary(self, start_date=None, end_date=None, campaign_types=None, 
-                             device_types=None, states=None, sources=None) -> Dict[str, Any]:
-        """Get analytics summary with filters"""
+    def get_analytics_summary(self, start_date=None, end_date=None, campaigns=None, states=None) -> Dict[str, Any]:
+        """Get analytics summary with optional filters"""
         conn = self.get_connection()
         c = conn.cursor()
-        
         try:
-            # Set default date range to last 7 days if not provided
-            if not start_date:
-                start_date = datetime.now() - timedelta(days=7)
-            if not end_date:
-                end_date = datetime.now()
-
-            # Base date parameters
-            date_params = [start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')]
+            # Build base query parts
+            base_select = """
+                SELECT 
+                    COUNT(a.id) as total_clicks,
+                    COUNT(DISTINCT a.ip_address) as unique_visitors,
+                    COUNT(DISTINCT DATE(a.clicked_at)) as active_days
+                FROM urls u
+                LEFT JOIN analytics a ON u.short_code = a.short_code
+            """
             
-            # Build base WHERE clause
-            where_conditions = ["date(a.clicked_at) BETWEEN ? AND ?"]
-            query_params = list(date_params)  # Create a copy of date_params
-
-            # Add optional filters
-            if campaign_types:
-                where_conditions.append(f"u.campaign_type IN ({','.join(['?' for _ in campaign_types])})")
-                query_params.extend(campaign_types)
+            # Build WHERE clause dynamically
+            where_conditions = []
+            params = []
             
-            if device_types:
-                where_conditions.append(f"a.device_type IN ({','.join(['?' for _ in device_types])})")
-                query_params.extend(device_types)
+            if start_date:
+                where_conditions.append("DATE(a.clicked_at) >= DATE(?)")
+                params.append(start_date)
+            
+            if end_date:
+                where_conditions.append("DATE(a.clicked_at) <= DATE(?)")
+                params.append(end_date)
+            
+            if campaigns:
+                placeholders = ','.join(['?' for _ in campaigns])
+                where_conditions.append(f"u.campaign_name IN ({placeholders})")
+                params.extend(campaigns)
             
             if states:
-                where_conditions.append(f"a.state IN ({','.join(['?' for _ in states])})")
-                query_params.extend(states)
+                placeholders = ','.join(['?' for _ in states])
+                where_conditions.append(f"a.state IN ({placeholders})")
+                params.extend(states)
             
-            if sources:
-                where_conditions.append(f"a.referrer IN ({','.join(['?' for _ in sources])})")
-                query_params.extend(sources)
-
-            where_clause = " AND ".join(where_conditions)
-
-            stats = {
-                'total_clicks': 0,
-                'unique_visitors': 0,
-                'active_days': 0,
-                'engagement_rate': 0,
-                'total_campaigns': 0,
-                'active_campaigns': 0,
-                'daily_stats': {},
-                'state_stats': {},
-                'device_stats': {},
-                'top_campaigns': [],
-                'recent_activities': []
-            }
-
-            # Basic metrics query
-            basic_query = f"""
-                SELECT 
-                    COUNT(DISTINCT a.id) as total_clicks,
-                    COUNT(DISTINCT a.ip_address) as unique_visitors,
-                    COUNT(DISTINCT date(a.clicked_at)) as active_days,
-                    (SELECT COUNT(*) FROM urls) as total_campaigns
-                FROM analytics a
-                JOIN urls u ON a.short_code = u.short_code
-                WHERE {where_clause}
-            """
-            c.execute(basic_query, query_params)
+            where_clause = f"WHERE {' AND '.join(where_conditions)}" if where_conditions else ""
+            
+            # Execute main metrics query
+            query = f"{base_select} {where_clause}"
+            c.execute(query, params)
             row = c.fetchone()
-            if row:
-                stats['total_clicks'] = row[0] or 0
-                stats['unique_visitors'] = row[1] or 0
-                stats['active_days'] = row[2] or 0
-                stats['total_campaigns'] = row[3] or 0
-                stats['engagement_rate'] = (row[1] / row[0] * 100) if row[0] and row[1] else 0
-
-            # Daily stats with date range
+            
+            summary = {
+                'total_clicks': row[0] or 0,
+                'unique_visitors': row[1] or 0,
+                'active_days': row[2] or 0,
+                'engagement_rate': (row[1] / row[0] * 100) if row[0] and row[1] else 0
+            }
+            
+            # Get daily stats
             daily_query = f"""
-                WITH RECURSIVE dates(date) AS (
-                    SELECT date(?) as date
-                    UNION ALL
-                    SELECT date(date, '+1 day')
-                    FROM dates
-                    WHERE date < date(?)
-                )
                 SELECT 
-                    dates.date,
-                    COALESCE(COUNT(DISTINCT a.id), 0) as clicks
-                FROM dates
-                LEFT JOIN analytics a ON date(a.clicked_at) = dates.date
-                LEFT JOIN urls u ON a.short_code = u.short_code
-                AND {where_clause}
-                GROUP BY dates.date
-                ORDER BY dates.date
+                    DATE(COALESCE(a.clicked_at, u.created_at)) as date,
+                    COUNT(a.id) as clicks
+                FROM urls u
+                LEFT JOIN analytics a ON u.short_code = a.short_code
+                {where_clause}
+                GROUP BY DATE(COALESCE(a.clicked_at, u.created_at))
+                ORDER BY date
             """
-            c.execute(daily_query, date_params + query_params)
-            stats['daily_stats'] = dict(c.fetchall())
-
-            # Get recent activities
-            query = f"""
+            c.execute(daily_query, params)
+            summary['daily_stats'] = {
+                row[0]: row[1] for row in c.fetchall()
+            }
+            
+            # Get state stats
+            state_query = f"""
                 SELECT 
-                    u.campaign_name,
-                    date(a.clicked_at) as clicked_at,
-                    a.state,
-                    a.device_type,
-                    u.campaign_type,
-                    COUNT(*) as daily_clicks
-                FROM analytics a
-                JOIN urls u ON a.short_code = u.short_code
-                WHERE {where_clause}
-                GROUP BY date(a.clicked_at), u.campaign_name
-                ORDER BY clicked_at DESC
-                LIMIT 10
-            """
-            c.execute(query, query_params)
-            stats['recent_activities'] = [
-                {
-                    'campaign_name': row[0],
-                    'clicked_at': row[1],
-                    'state': row[2] or "Unknown",
-                    'device_type': row[3] or "Unknown",
-                    'campaign_type': row[4] or "Other",
-                    'daily_clicks': row[5]
-                }
-                for row in c.fetchall()
-            ]
-
-            # Get state distribution
-            query = f"""
-                SELECT a.state, COUNT(*) as visits
-                FROM analytics a
-                JOIN urls u ON a.short_code = u.short_code
-                WHERE a.state IS NOT NULL AND {where_clause}
-                GROUP BY a.state
+                    COALESCE(a.state, 'Unknown') as state,
+                    COUNT(a.id) as visits
+                FROM urls u
+                LEFT JOIN analytics a ON u.short_code = a.short_code
+                {where_clause}
+                GROUP BY COALESCE(a.state, 'Unknown')
+                HAVING state IS NOT NULL
                 ORDER BY visits DESC
             """
-            c.execute(query, query_params)
-            stats['state_stats'] = dict(c.fetchall())
-
-            # Get device distribution
-            query = f"""
-                SELECT a.device_type, COUNT(*) as count
-                FROM analytics a
-                JOIN urls u ON a.short_code = u.short_code
-                WHERE a.device_type IS NOT NULL AND {where_clause}
-                GROUP BY a.device_type
-            """
-            c.execute(query, query_params)
-            stats['device_stats'] = dict(c.fetchall())
-
-            # Get top campaigns
-            query = f"""
+            c.execute(state_query, params)
+            summary['state_stats'] = {
+                row[0]: row[1] for row in c.fetchall()
+            }
+            
+            # Get campaign stats
+            campaign_query = f"""
                 SELECT 
                     u.campaign_name,
-                    COUNT(*) as clicks,
+                    COUNT(a.id) as total_clicks,
                     COUNT(DISTINCT a.ip_address) as unique_visitors,
-                    u.campaign_type,
-                    MAX(date(a.clicked_at)) as last_click
+                    0 as avg_time,
+                    0 as bounce_rate
                 FROM urls u
-                JOIN analytics a ON u.short_code = a.short_code
-                WHERE {where_clause}
-                GROUP BY u.id
-                ORDER BY clicks DESC
-                LIMIT 5
+                LEFT JOIN analytics a ON u.short_code = a.short_code
+                {where_clause}
+                GROUP BY u.campaign_name
+                ORDER BY total_clicks DESC
             """
-            c.execute(query, query_params)
-            stats['top_campaigns'] = [
-                {
-                    'campaign_name': row[0],
-                    'clicks': row[1],
-                    'unique_visitors': row[2],
-                    'campaign_type': row[3],
-                    'last_click': row[4]
-                }
-                for row in c.fetchall()
-            ]
-
-            return stats
-
+            c.execute(campaign_query, params)
+            summary['campaign_stats'] = [{
+                'campaign_name': row[0],
+                'total_clicks': row[1] or 0,
+                'unique_visitors': row[2] or 0,
+                'avg_time_on_page': "0s",  # Default value
+                'bounce_rate': 0,  # Default value
+                'conversion_rate': (row[2] / row[1] * 100) if row[1] and row[2] else 0
+            } for row in c.fetchall()]
+            
+            return summary
+            
         except Exception as e:
             logger.error(f"Error getting analytics summary: {str(e)}")
             return {
@@ -267,13 +218,9 @@ class Database:
                 'unique_visitors': 0,
                 'active_days': 0,
                 'engagement_rate': 0,
-                'total_campaigns': 0,
-                'active_campaigns': 0,
                 'daily_stats': {},
                 'state_stats': {},
-                'device_stats': {},
-                'top_campaigns': [],
-                'recent_activities': []
+                'campaign_stats': []
             }
         finally:
             conn.close()
@@ -368,23 +315,26 @@ class Database:
             conn.close()
 
     def get_url_info(self, short_code: str) -> Optional[Dict[str, Any]]:
-        """Get URL information for redirection"""
+        """Get URL info by short code"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            c.execute("""
+            c.execute('''
                 SELECT 
                     original_url,
                     campaign_name,
                     campaign_type,
+                    created_at,
+                    last_clicked,
+                    total_clicks,
                     utm_source,
                     utm_medium,
                     utm_campaign,
                     utm_content,
-                    utm_term
+                    is_active
                 FROM urls 
-                WHERE short_code = ? AND is_active = 1
-            """, (short_code,))
+                WHERE short_code = ?
+            ''', (short_code,))
             
             row = c.fetchone()
             if row:
@@ -392,83 +342,21 @@ class Database:
                     'original_url': row[0],
                     'campaign_name': row[1],
                     'campaign_type': row[2],
-                    'utm_params': {
-                        'source': row[3],
-                        'medium': row[4],
-                        'campaign': row[5],
-                        'content': row[6],
-                        'term': row[7]
-                    }
+                    'created_at': row[3],
+                    'last_clicked': row[4],
+                    'total_clicks': row[5],
+                    'utm_source': row[6],
+                    'utm_medium': row[7],
+                    'utm_campaign': row[8],
+                    'utm_content': row[9],
+                    'is_active': bool(row[10])
                 }
             return None
-            
         except Exception as e:
             logger.error(f"Error getting URL info: {str(e)}")
             return None
         finally:
             conn.close()
-
-    def build_redirect_url(self, url_info: Dict[str, Any]) -> str:
-        """Build redirect URL with UTM parameters"""
-        try:
-            # Parse original URL
-            parsed_url = urlparse(url_info['original_url'])
-            
-            # Get existing query parameters
-            query_params = parse_qs(parsed_url.query)
-            
-            # Add/update UTM parameters if they exist
-            utm_params = url_info.get('utm_params', {})
-            for key, value in utm_params.items():
-                if value:
-                    query_params[f'utm_{key}'] = [value]
-            
-            # Build new query string
-            new_query = urlencode(query_params, doseq=True)
-            
-            # Reconstruct URL
-            redirect_url = parsed_url._replace(query=new_query).geturl()
-            
-            return redirect_url
-            
-        except Exception as e:
-            logger.error(f"Error building redirect URL: {str(e)}")
-            return url_info['original_url']
-
-    def handle_redirect(self, short_code: str, **kwargs) -> Optional[str]:
-        """Handle URL redirection and record analytics"""
-        try:
-            # Get URL information
-            url_info = self.get_url_info(short_code)
-            if not url_info:
-                logger.error(f"No URL found for short code: {short_code}")
-                return None
-            
-            # Record the click first
-            click_recorded = self.record_click(
-                short_code=short_code,
-                ip_address=kwargs.get('ip_address', '127.0.0.1'),
-                user_agent=kwargs.get('user_agent', 'Unknown'),
-                referrer=kwargs.get('referrer', 'Direct'),
-                state=kwargs.get('state', 'Unknown'),
-                device_type=kwargs.get('device_type', 'Unknown'),
-                browser=kwargs.get('browser', 'Unknown'),
-                os=kwargs.get('os', 'Unknown')
-            )
-            
-            if click_recorded:
-                logger.info(f"Click recorded successfully for {short_code}")
-            else:
-                logger.warning(f"Failed to record click for {short_code}")
-            
-            # Build and return redirect URL
-            redirect_url = self.build_redirect_url(url_info)
-            logger.info(f"Redirecting to: {redirect_url}")
-            return redirect_url
-            
-        except Exception as e:
-            logger.error(f"Error handling redirect: {str(e)}")
-            return None
 
     def get_campaign_performance(self) -> pd.DataFrame:
         """Get detailed campaign performance metrics"""
@@ -529,38 +417,35 @@ class Database:
             finally:
                 c.close()
 
-    def create_short_url(self, url: str, campaign_name: str, campaign_type: str = None, utm_params: dict = None) -> Optional[str]:
+    def create_short_url(self, url: str, campaign_name: str, campaign_type: str = None, utm_params: dict = None) -> str:
         """Create a new short URL"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
             # Generate unique short code
-            short_code = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+            short_code = self.generate_short_code()
             
-            # Check if short_code exists
-            while True:
-                c.execute("SELECT 1 FROM urls WHERE short_code = ?", (short_code,))
-                if not c.fetchone():
-                    break
-                short_code = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-
+            # Add UTM parameters if provided
+            if utm_params:
+                parsed_url = urlparse(url)
+                query_params = parse_qs(parsed_url.query)
+                
+                # Add UTM parameters
+                if utm_params.get('source'): query_params['utm_source'] = [utm_params['source']]
+                if utm_params.get('medium'): query_params['utm_medium'] = [utm_params['medium']]
+                if utm_params.get('campaign'): query_params['utm_campaign'] = [utm_params['campaign']]
+                if utm_params.get('content'): query_params['utm_content'] = [utm_params['content']]
+                
+                # Reconstruct URL with UTM parameters
+                url = parsed_url._replace(query=urlencode(query_params, doseq=True)).geturl()
+            
             # Insert new URL
-            c.execute("""
+            c.execute('''
                 INSERT INTO urls (
-                    short_code, 
-                    original_url, 
-                    campaign_name, 
-                    campaign_type,
-                    utm_source,
-                    utm_medium,
-                    utm_campaign,
-                    utm_content,
-                    utm_term,
-                    created_at,
-                    total_clicks,
-                    is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, 1)
-            """, (
+                    short_code, original_url, campaign_name, campaign_type,
+                    utm_source, utm_medium, utm_campaign, utm_content
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
                 short_code,
                 url,
                 campaign_name,
@@ -568,147 +453,160 @@ class Database:
                 utm_params.get('source') if utm_params else None,
                 utm_params.get('medium') if utm_params else None,
                 utm_params.get('campaign') if utm_params else None,
-                utm_params.get('content') if utm_params else None,
-                utm_params.get('term') if utm_params else None
+                utm_params.get('content') if utm_params else None
             ))
             
             conn.commit()
-            logger.info(f"Campaign created successfully: {campaign_name} ({short_code})")
+            logger.info(f"Created short URL: {short_code} for campaign: {campaign_name}")
             return short_code
             
+        except sqlite3.IntegrityError as e:
+            logger.error(f"Error creating short URL: {str(e)}")
+            if "UNIQUE constraint failed: urls.campaign_name" in str(e):
+                raise ValueError("Campaign name already exists")
+            raise
         except Exception as e:
             logger.error(f"Error creating short URL: {str(e)}")
             conn.rollback()
-            return None
-            
+            raise
         finally:
             conn.close()
 
     def get_dashboard_stats(self) -> Dict[str, Any]:
-        """Get dashboard statistics"""
+        """Get comprehensive dashboard statistics"""
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Get basic stats
-            c.execute("""
-                SELECT 
-                    COUNT(DISTINCT u.id) as total_campaigns,
-                    COUNT(DISTINCT CASE WHEN u.is_active = 1 THEN u.id END) as active_campaigns,
-                    SUM(u.total_clicks) as total_clicks,
-                    COUNT(DISTINCT a.ip_address) as unique_visitors
-                FROM urls u
-                LEFT JOIN analytics a ON u.short_code = a.short_code
-            """)
-            
-            row = c.fetchone()
+            # Initialize empty stats
             stats = {
-                'total_campaigns': row[0] or 0,
-                'active_campaigns': row[1] or 0,
-                'total_clicks': row[2] or 0,
-                'unique_visitors': row[3] or 0
+                'total_clicks': None,
+                'unique_visitors': None,
+                'total_campaigns': None,
+                'active_campaigns': None,
+                'recent_activities': [],
+                'top_campaigns': [],
+                'state_stats': {},
+                'device_stats': {},
+                'daily_stats': {}
             }
-
-            # Get recent activities
-            c.execute("""
-                SELECT 
-                    u.campaign_name,
-                    u.campaign_type,
-                    a.clicked_at,
-                    a.state,
-                    a.device_type,
-                    a.browser,
-                    a.referrer
-                FROM analytics a
-                JOIN urls u ON a.short_code = u.short_code
-                ORDER BY a.clicked_at DESC
-                LIMIT 10
-            """)
             
-            stats['recent_activities'] = [
-                {
-                    'campaign_name': row[0],
-                    'campaign_type': row[1],
-                    'clicked_at': row[2],
-                    'state': row[3] or 'Unknown',
-                    'device_type': row[4] or 'Unknown',
-                    'browser': row[5] or 'Unknown',
-                    'referrer': row[6] or 'Direct'
-                }
-                for row in c.fetchall()
-            ]
-
-            # Get daily stats
+            # Check if any data exists
+            c.execute("SELECT COUNT(*) FROM urls")
+            if c.fetchone()[0] == 0:
+                # Return empty stats if no data
+                return stats
+            
+            # Get basic metrics
             c.execute("""
                 SELECT 
-                    date(a.clicked_at) as click_date,
-                    COUNT(*) as clicks
-                FROM analytics a
-                WHERE a.clicked_at >= date('now', '-7 days')
-                GROUP BY date(a.clicked_at)
-                ORDER BY click_date DESC
-            """)
-            stats['daily_stats'] = dict(c.fetchall())
-
-            # Get device stats
-            c.execute("""
-                SELECT 
-                    COALESCE(device_type, 'Unknown') as device,
-                    COUNT(*) as count
-                FROM analytics
-                GROUP BY device_type
-            """)
-            stats['device_stats'] = dict(c.fetchall())
-
-            # Get state stats
-            c.execute("""
-                SELECT 
-                    COALESCE(state, 'Unknown') as state,
-                    COUNT(*) as count
-                FROM analytics
-                GROUP BY state
-            """)
-            stats['state_stats'] = dict(c.fetchall())
-
-            # Get top campaigns
-            c.execute("""
-                SELECT 
-                    u.campaign_name,
-                    u.campaign_type,
-                    u.total_clicks,
+                    COUNT(DISTINCT a.id) as total_clicks,
                     COUNT(DISTINCT a.ip_address) as unique_visitors,
-                    MAX(a.clicked_at) as last_click
+                    COUNT(DISTINCT u.id) as total_campaigns,
+                    COUNT(DISTINCT CASE WHEN u.is_active = 1 THEN u.id END) as active_campaigns
                 FROM urls u
                 LEFT JOIN analytics a ON u.short_code = a.short_code
-                GROUP BY u.id
-                ORDER BY u.total_clicks DESC
-                LIMIT 5
             """)
-            
-            stats['top_campaigns'] = [
-                {
+            row = c.fetchone()
+            if row:
+                stats.update({
+                    'total_clicks': row[0] or 0,
+                    'unique_visitors': row[1] or 0,
+                    'total_campaigns': row[2] or 0,
+                    'active_campaigns': row[3] or 0
+                })
+
+            # Only fetch other stats if we have campaigns
+            if stats['total_campaigns']:
+                # Get recent activities
+                c.execute("""
+                    SELECT 
+                        u.campaign_name,
+                        a.clicked_at,
+                        a.state,
+                        a.device_type,
+                        a.browser,
+                        u.campaign_type
+                    FROM analytics a
+                    JOIN urls u ON a.short_code = u.short_code
+                    ORDER BY a.clicked_at DESC
+                    LIMIT 10
+                """)
+                stats['recent_activities'] = [{
                     'campaign_name': row[0],
-                    'campaign_type': row[1],
-                    'clicks': row[2] or 0,
-                    'unique_visitors': row[3] or 0,
+                    'clicked_at': row[1],
+                    'state': row[2],
+                    'device_type': row[3],
+                    'browser': row[4],
+                    'campaign_type': row[5]
+                } for row in c.fetchall()]
+
+                # Get top performing campaigns
+                c.execute("""
+                    SELECT 
+                        u.campaign_name,
+                        COUNT(a.id) as clicks,
+                        COUNT(DISTINCT a.ip_address) as unique_visitors,
+                        u.campaign_type,
+                        MAX(a.clicked_at) as last_click
+                    FROM urls u
+                    LEFT JOIN analytics a ON u.short_code = a.short_code
+                    GROUP BY u.id
+                    ORDER BY clicks DESC
+                    LIMIT 5
+                """)
+                stats['top_campaigns'] = [{
+                    'campaign_name': row[0],
+                    'clicks': row[1],
+                    'unique_visitors': row[2],
+                    'campaign_type': row[3],
                     'last_click': row[4]
-                }
-                for row in c.fetchall()
-            ]
+                } for row in c.fetchall()]
+
+                # Get state distribution
+                c.execute("""
+                    SELECT state, COUNT(*) as count
+                    FROM analytics
+                    WHERE state IS NOT NULL
+                    GROUP BY state
+                    ORDER BY count DESC
+                """)
+                stats['state_stats'] = dict(c.fetchall())
+
+                # Get device distribution
+                c.execute("""
+                    SELECT device_type, COUNT(*) as count
+                    FROM analytics
+                    WHERE device_type IS NOT NULL
+                    GROUP BY device_type
+                """)
+                stats['device_stats'] = dict(c.fetchall())
+
+                # Get daily clicks for the last 30 days
+                c.execute("""
+                    SELECT 
+                        date(clicked_at) as click_date,
+                        COUNT(*) as clicks
+                    FROM analytics
+                    WHERE clicked_at >= date('now', '-30 days')
+                    GROUP BY click_date
+                    ORDER BY click_date
+                """)
+                stats['daily_stats'] = dict(c.fetchall())
 
             return stats
-            
+
         except Exception as e:
             logger.error(f"Error getting dashboard stats: {str(e)}")
             return {
-                'total_campaigns': 0,
-                'active_campaigns': 0,
-                'total_clicks': 0,
-                'unique_visitors': 0,
-                'daily_stats': {},
-                'device_stats': {},
-                'state_stats': {},
+                'total_clicks': None,
+                'unique_visitors': None,
+                'total_campaigns': None,
+                'active_campaigns': None,
                 'recent_activities': [],
-                'top_campaigns': []
+                'top_campaigns': [],
+                'state_stats': {},
+                'device_stats': {},
+                'daily_stats': {}
             }
         finally:
             conn.close()
@@ -718,51 +616,77 @@ class Database:
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Begin transaction
-            conn.execute("BEGIN TRANSACTION")
-            
-            # Update URL stats first
+            # First update URL stats
             c.execute('''
                 UPDATE urls 
                 SET total_clicks = total_clicks + 1,
-                    last_clicked = datetime('now', 'localtime')
+                    last_clicked = datetime('now')
                 WHERE short_code = ?
             ''', (short_code,))
-
-            # Insert analytics record
+            
+            # Then insert click data
             c.execute('''
                 INSERT INTO analytics (
-                    short_code,
-                    clicked_at,
-                    ip_address,
-                    user_agent,
-                    referrer,
-                    state,
-                    device_type,
-                    browser,
-                    os
-                ) VALUES (?, datetime('now', 'localtime'), ?, ?, ?, ?, ?, ?, ?)
+                    short_code, clicked_at, ip_address, user_agent,
+                    referrer, state, device_type, browser, os,
+                    time_on_page
+                ) VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 short_code,
-                kwargs.get('ip_address', '127.0.0.1'),
-                kwargs.get('user_agent', 'Unknown'),
-                kwargs.get('referrer', 'Direct'),
-                kwargs.get('state', 'Unknown'),
-                kwargs.get('device_type', 'Unknown'),
-                kwargs.get('browser', 'Unknown'),
-                kwargs.get('os', 'Unknown')
+                kwargs.get('ip_address'),
+                kwargs.get('user_agent'),
+                kwargs.get('referrer'),
+                kwargs.get('state'),
+                kwargs.get('device_type'),
+                kwargs.get('browser'),
+                kwargs.get('os'),
+                kwargs.get('time_on_page', 0)  # Default to 0 if not provided
             ))
             
             conn.commit()
-            logger.info(f"Click recorded for {short_code}")
+            logger.info(f"Click recorded successfully for {short_code}")
             return True
             
         except Exception as e:
             logger.error(f"Error recording click: {str(e)}")
             conn.rollback()
             return False
+            
         finally:
             conn.close()
+
+    def handle_redirect(self, short_code: str) -> Optional[str]:
+        """Handle URL redirect and record click analytics"""
+        try:
+            # Get URL info
+            url_info = self.get_url_info(short_code)
+            
+            if url_info and url_info.get('original_url'):
+                # Record the click first
+                click_recorded = self.record_click(
+                    short_code=short_code,
+                    ip_address=st.session_state.get('client_ip', '127.0.0.1'),
+                    user_agent=st.session_state.get('user_agent', 'Unknown'),
+                    referrer=st.session_state.get('referrer', 'Direct'),
+                    state=st.session_state.get('state', 'Unknown'),
+                    device_type=st.session_state.get('device_type', 'Unknown'),
+                    browser=st.session_state.get('browser', 'Unknown'),
+                    os=st.session_state.get('os', 'Unknown')
+                )
+                
+                if click_recorded:
+                    logger.info(f"Click recorded for {short_code}")
+                    # Force a cache clear to update stats
+                    st.cache_data.clear()
+                    return url_info['original_url']
+                else:
+                    logger.error(f"Failed to record click for {short_code}")
+                    
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error handling redirect: {str(e)}")
+            return None
 
     def update_campaign(self, short_code: str, **kwargs) -> bool:
         """Update campaign details"""
@@ -772,17 +696,9 @@ class Database:
             # Build update query dynamically based on provided fields
             update_fields = []
             values = []
-            
-            # Map incoming field names to database column names
-            field_mapping = {
-                'campaign_name': 'campaign_name',
-                'campaign_type': 'campaign_type',
-                'is_active': 'is_active'
-            }
-            
             for key, value in kwargs.items():
-                if key in field_mapping and value is not None:
-                    update_fields.append(f"{field_mapping[key]} = ?")
+                if value is not None:
+                    update_fields.append(f"{key} = ?")
                     values.append(value)
             
             if not update_fields:
@@ -799,314 +715,14 @@ class Database:
             """
             c.execute(query, values)
             
-            if c.rowcount > 0:
-                conn.commit()
-                logger.info(f"Campaign {short_code} updated successfully")
-                return True
-            else:
-                logger.error(f"No campaign found with short_code: {short_code}")
-                return False
+            conn.commit()
+            logger.info(f"Campaign {short_code} updated successfully")
+            return True
             
         except Exception as e:
             logger.error(f"Error updating campaign: {str(e)}")
             conn.rollback()
             return False
             
-        finally:
-            conn.close()
-
-    def add_click(self, short_code: str, click_data: dict):
-        """Add click data using existing record_click method"""
-        try:
-            return self.record_click(
-                short_code=short_code,
-                ip_address=click_data.get('ip'),
-                user_agent=click_data.get('user_agent'),
-                referrer=click_data.get('referrer'),
-                state=click_data.get('state'),
-                device_type=click_data.get('device_type'),
-                browser=click_data.get('browser', 'Unknown'),
-                os=click_data.get('os', 'Unknown'),
-                clicked_at=click_data.get('clicked_at')
-            )
-        except Exception as e:
-            logger.error(f"Error adding click: {e}")
-            return False
-
-    def get_clicks_by_date_range(self, start_date: datetime, end_date: datetime):
-        """Get clicks within date range"""
-        try:
-            clicks = self.db.clicks.find({
-                'clicked_at': {
-                    '$gte': start_date.strftime('%Y-%m-%d %H:%M:%S'),
-                    '$lte': end_date.strftime('%Y-%m-%d %H:%M:%S')
-                }
-            })
-            return list(clicks)
-        except Exception as e:
-            logger.error(f"Error getting clicks: {e}")
-            return []
-
-    def get_campaign_stats(self, short_code: str) -> Dict[str, Any]:
-        """Get campaign statistics"""
-        conn = self.get_connection()
-        c = conn.cursor()
-        try:
-            # Get basic stats
-            c.execute("""
-                SELECT 
-                    COUNT(*) as total_clicks,
-                    COUNT(DISTINCT ip_address) as unique_visitors
-                FROM analytics
-                WHERE short_code = ?
-            """, (short_code,))
-            
-            row = c.fetchone()
-            stats = {
-                'total_clicks': row[0] or 0,
-                'unique_visitors': row[1] or 0
-            }
-            
-            # Get device stats
-            c.execute("""
-                SELECT 
-                    device_type,
-                    COUNT(*) as count
-                FROM analytics
-                WHERE short_code = ?
-                GROUP BY device_type
-            """, (short_code,))
-            
-            stats['device_stats'] = dict(c.fetchall())
-            
-            # Get daily clicks
-            c.execute("""
-                SELECT 
-                    date(clicked_at) as click_date,
-                    COUNT(*) as clicks
-                FROM analytics
-                WHERE short_code = ?
-                GROUP BY date(clicked_at)
-                ORDER BY click_date DESC
-                LIMIT 30
-            """, (short_code,))
-            
-            stats['daily_clicks'] = dict(c.fetchall())
-            
-            return stats
-            
-        except Exception as e:
-            logger.error(f"Error getting campaign stats: {str(e)}")
-            return {
-                'total_clicks': 0,
-                'unique_visitors': 0,
-                'device_stats': {},
-                'daily_clicks': {}
-            }
-        finally:
-            conn.close()
-
-    def create_campaign(self, name: str, campaign_type: str, url: str, short_code: str) -> bool:
-        """Create a new campaign"""
-        conn = self.get_connection()
-        c = conn.cursor()
-        try:
-            # Check if short_code already exists
-            c.execute("SELECT 1 FROM urls WHERE short_code = ?", (short_code,))
-            if c.fetchone():
-                logger.error(f"Short code {short_code} already exists")
-                return False
-
-            # Parse URL for UTM parameters
-            parsed_url = urlparse(url)
-            query_params = parse_qs(parsed_url.query)
-            
-            c.execute("""
-                INSERT INTO urls (
-                    short_code, 
-                    original_url, 
-                    campaign_name, 
-                    campaign_type,
-                    utm_source,
-                    utm_medium,
-                    utm_campaign,
-                    utm_content,
-                    utm_term,
-                    created_at,
-                    total_clicks,
-                    is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, 1)
-            """, (
-                short_code,
-                url,
-                name,
-                campaign_type,
-                query_params.get('utm_source', [None])[0],
-                query_params.get('utm_medium', [None])[0],
-                query_params.get('utm_campaign', [None])[0],
-                query_params.get('utm_content', [None])[0],
-                query_params.get('utm_term', [None])[0]
-            ))
-            
-            conn.commit()
-            logger.info(f"Campaign {name} created successfully")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error creating campaign: {str(e)}")
-            conn.rollback()
-            return False
-            
-        finally:
-            conn.close()
-
-    def get_all_campaigns(self) -> List[Dict[str, Any]]:
-        """Get all campaigns with their stats"""
-        conn = self.get_connection()
-        c = conn.cursor()
-        try:
-            c.execute("""
-                SELECT 
-                    u.campaign_name,
-                    u.campaign_type,
-                    u.short_code,
-                    u.original_url,
-                    u.total_clicks,
-                    datetime(u.created_at) as created_at,
-                    datetime(COALESCE(u.last_clicked, u.created_at)) as last_clicked,
-                    u.is_active,
-                    COUNT(DISTINCT a.ip_address) as unique_visitors
-                FROM urls u
-                LEFT JOIN analytics a ON u.short_code = a.short_code
-                GROUP BY 
-                    u.id,
-                    u.campaign_name,
-                    u.campaign_type,
-                    u.short_code,
-                    u.original_url,
-                    u.total_clicks,
-                    u.created_at,
-                    u.last_clicked,
-                    u.is_active
-                ORDER BY u.created_at DESC
-            """)
-            
-            columns = [description[0] for description in c.description]
-            campaigns = []
-            for row in c.fetchall():
-                campaign_dict = dict(zip(columns, row))
-                # Ensure total_clicks is never None
-                campaign_dict['total_clicks'] = campaign_dict['total_clicks'] or 0
-                # Format dates properly
-                campaign_dict['created_at'] = campaign_dict['created_at']
-                campaign_dict['last_clicked'] = campaign_dict['last_clicked'] if campaign_dict['last_clicked'] != campaign_dict['created_at'] else None
-                campaigns.append(campaign_dict)
-            
-            return campaigns
-            
-        except Exception as e:
-            logger.error(f"Error getting campaigns: {str(e)}")
-            return []
-            
-        finally:
-            conn.close()
-
-    def delete_campaign(self, short_code: str) -> bool:
-        """Delete a campaign and its analytics"""
-        conn = self.get_connection()
-        c = conn.cursor()
-        try:
-            # Delete analytics first due to foreign key constraint
-            c.execute("DELETE FROM analytics WHERE short_code = ?", (short_code,))
-            # Then delete the campaign
-            c.execute("DELETE FROM urls WHERE short_code = ?", (short_code,))
-            conn.commit()
-            return True
-        except Exception as e:
-            logger.error(f"Error deleting campaign: {str(e)}")
-            conn.rollback()
-            return False
-        finally:
-            conn.close()
-
-    def save_campaign_url(self, url: str, short_code: str, campaign_name: str, 
-                         campaign_type: str, utm_params: dict = None) -> bool:
-        """Save campaign URL to database"""
-        conn = self.get_connection()
-        c = conn.cursor()
-        try:
-            # Check if short_code exists
-            c.execute("SELECT 1 FROM urls WHERE short_code = ?", (short_code,))
-            if c.fetchone():
-                logger.error(f"Short code {short_code} already exists")
-                return False
-
-            # Insert new URL with all required fields
-            c.execute("""
-                INSERT INTO urls (
-                    short_code, 
-                    original_url, 
-                    campaign_name, 
-                    campaign_type,
-                    utm_source,
-                    utm_medium,
-                    utm_campaign,
-                    utm_content,
-                    utm_term,
-                    created_at,
-                    total_clicks,
-                    is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0, 1)
-            """, (
-                short_code,
-                url,
-                campaign_name,
-                campaign_type,
-                utm_params.get('source') if utm_params else None,
-                utm_params.get('medium') if utm_params else None,
-                utm_params.get('campaign') if utm_params else None,
-                utm_params.get('content') if utm_params else None,
-                utm_params.get('term') if utm_params else None  # Added utm_term
-            ))
-            
-            conn.commit()
-            logger.info(f"Campaign URL saved successfully: {short_code}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error saving campaign URL: {str(e)}")
-            conn.rollback()
-            return False
-        finally:
-            conn.close()
-
-    def get_url_stats(self, short_code: str) -> Dict[str, Any]:
-        """Get statistics for a specific URL"""
-        conn = self.get_connection()
-        c = conn.cursor()
-        try:
-            c.execute("""
-                SELECT 
-                    u.total_clicks,
-                    COUNT(DISTINCT a.ip_address) as unique_visitors,
-                    u.last_clicked
-                FROM urls u
-                LEFT JOIN analytics a ON u.short_code = a.short_code
-                WHERE u.short_code = ?
-                GROUP BY u.id
-            """, (short_code,))
-            
-            row = c.fetchone()
-            if row:
-                return {
-                    'total_clicks': row[0] or 0,
-                    'unique_visitors': row[1] or 0,
-                    'last_clicked': row[2]
-                }
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error getting URL stats: {str(e)}")
-            return None
         finally:
             conn.close()

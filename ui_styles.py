@@ -1,292 +1,314 @@
+import streamlit as st
+
+def load_ui_styles():
+    theme = st.session_state.get('theme', 'light')
+    
+    return """
+    <style>
+        /* Base Theme Colors */
+        :root {
+            --deep-green-start: #065F46;
+            --deep-green-end: #047857;
+            --deep-green-light: #059669;
+            --deep-green-accent: #10B981;
+            --deep-green-glow: rgba(6, 95, 70, 0.25);
+            --sidebar-bg: rgb(13, 28, 18);
+            --sidebar-hover: rgba(16, 185, 129, 0.1);
+            
+            /* Card Colors */
+            --card-bg: linear-gradient(145deg, rgba(6, 95, 70, 0.08), rgba(16, 185, 129, 0.05));
+            --card-border: rgba(16, 185, 129, 0.2);
+            --card-hover-bg: linear-gradient(145deg, rgba(6, 95, 70, 0.12), rgba(16, 185, 129, 0.08));
+            --card-hover-border: rgba(16, 185, 129, 0.5);
+            --card-shadow: 0 4px 20px rgba(6, 95, 70, 0.15);
+            --card-hover-shadow: 0 8px 30px rgba(6, 95, 70, 0.25);
+            
+            /* Text Colors */
+            --text-primary: #F3EDED;
+            --text-secondary: #E2E8F0;
+            --background-dark: #101414;
+        }
+
+        /* Global Styles */
+        .stApp {
+            background: var(--background-dark);
+            color: var(--text-primary);
+        }
+
+        /* Enhanced Metric Cards */
+        [data-testid="stMetric"] {
+            background: var(--card-bg);
+            padding: 2rem !important;
+            border-radius: 1.2rem !important;
+            border: 1px solid var(--card-border) !important;
+            box-shadow: var(--card-shadow);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(10px);
+        }
+
+        [data-testid="stMetric"]::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--deep-green-accent), var(--deep-green-light));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        [data-testid="stMetric"]:hover {
+            transform: translateY(-5px) scale(1.02);
+            border-color: var(--card-hover-border) !important;
+            background: var(--card-hover-bg);
+            box-shadow: var(--card-hover-shadow);
+        }
+
+        [data-testid="stMetric"]:hover::before {
+            opacity: 1;
+        }
+
+        /* Metric Text Styles */
+        [data-testid="stMetricLabel"] > div {
+            color: var(--deep-green-accent) !important;
+            font-size: 1.1rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-size: 2.8rem !important;
+            font-weight: 800 !important;
+            background: linear-gradient(90deg, var(--deep-green-light), var(--deep-green-accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.02em;
+        }
+
+        [data-testid="stMetricDelta"] {
+            background: linear-gradient(90deg, #059669, #10B981);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 700 !important;
+            font-size: 1.1rem !important;
+            padding: 0.3rem 0.8rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        /* Enhanced Sidebar */
+        [data-testid="stSidebar"] {
+            background: var(--sidebar-bg) !important;
+            border-right: 1px solid rgba(16, 185, 129, 0.1);
+        }
+
+        /* Sidebar Navigation */
+        [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+            padding: 1.5rem 1rem;
+        }
+
+        [data-testid="stSidebar"] button {
+            width: 100%;
+            padding: 0.75rem 1rem !important;
+            border-radius: 0.8rem !important;
+            background: transparent !important;
+            color: #E2E8F0 !important;
+            border: 1px solid transparent !important;
+            transition: all 0.3s ease !important;
+        }
+
+        [data-testid="stSidebar"] button:hover {
+            background: var(--sidebar-hover) !important;
+            border-color: rgba(16, 185, 129, 0.2) !important;
+            transform: translateX(5px);
+        }
+
+        /* Chart Container */
+        .js-plotly-plot {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border) !important;
+            border-radius: 1.2rem !important;
+            padding: 1.5rem !important;
+            box-shadow: var(--card-shadow);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .js-plotly-plot:hover {
+            transform: translateY(-3px);
+            border-color: var(--card-hover-border) !important;
+            box-shadow: var(--card-hover-shadow);
+        }
+
+        /* Tables */
+        .stDataFrame {
+            border: 1px solid var(--card-border) !important;
+            border-radius: 1rem !important;
+            overflow: hidden !important;
+        }
+
+        .stDataFrame thead tr th {
+            background: var(--card-bg) !important;
+            color: var(--text-primary) !important;
+        }
+
+        .stDataFrame tbody tr:hover td {
+            background: var(--card-hover-bg) !important;
+        }
+
+        /* Forms and Inputs */
+        .stTextInput input,
+        .stSelectbox select,
+        .stDateInput input {
+            background: var(--card-bg) !important;
+            border-color: var(--card-border) !important;
+            color: var(--text-primary) !important;
+            border-radius: 0.8rem !important;
+        }
+
+        .stTextInput input:focus,
+        .stSelectbox select:focus,
+        .stDateInput input:focus {
+            border-color: var(--deep-green-accent) !important;
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2) !important;
+        }
+
+        /* Buttons */
+        .stButton > button {
+            background: var(--deep-green-start) !important;
+            color: white !important;
+            border: none !important;
+            padding: 0.75rem 1.5rem !important;
+            border-radius: 0.8rem !important;
+            font-weight: 600 !important;
+            transition: all 0.3s ease !important;
+        }
+
+        .stButton > button:hover {
+            background: var(--deep-green-end) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(6, 95, 70, 0.3);
+        }
+
+        /* Recent Campaign Styles */
+        .recent-activity {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 1.2rem;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            transition: all 0.3s ease;
+        }
+
+        .activity-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            border-radius: 0.8rem;
+            background: rgba(6, 95, 70, 0.05);
+            border: 1px solid rgba(16, 185, 129, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .activity-item:hover {
+            transform: translateX(5px);
+            background: rgba(6, 95, 70, 0.1);
+            border-color: var(--deep-green-accent);
+            box-shadow: 0 4px 12px rgba(6, 95, 70, 0.1);
+        }
+
+        .activity-icon {
+            background: var(--deep-green-start);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            font-size: 1.2rem;
+        }
+
+        .activity-content {
+            flex: 1;
+        }
+
+        .activity-title {
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .activity-meta {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .activity-time {
+            color: var(--deep-green-accent);
+            font-weight: 500;
+        }
+
+        .activity-state {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--deep-green-accent);
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        /* Activity List Animation */
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .activity-item {
+            animation: slideIn 0.3s ease-out forwards;
+        }
+
+        .activity-item:nth-child(2) {
+            animation-delay: 0.1s;
+        }
+
+        .activity-item:nth-child(3) {
+            animation-delay: 0.2s;
+        }
+    </style>
+    """
+
 def get_theme_colors(theme='dark'):
     """Get color scheme based on theme"""
     return {
+        'light': {
+            'background': '#F8FAFC',
+            'secondary_background': '#FFFFFF',
+            'card_background': '#FFFFFF',
+            'text': '#1E293B',
+            'secondary_text': '#475569',
+        },
         'dark': {
-            'background': '#0A1F1C',
-            'card_bg': '#132C27',
+            'background': '#0B0F19',
+            'secondary_background': '#151B28',
+            'card_background': '#1A2332',
             'text': '#E2E8F0',
             'secondary_text': '#94A3B8',
-            'primary': '#064E3B',
-            'primary_light': '#065F46',
-            'success': '#059669',
-            'border': 'rgba(6, 78, 59, 0.2)'
         }
-    }
-
-def get_styles():
-    """Get base styles for the application"""
-    return """
-        <style>
-            .stApp {
-                background-color: #0A1F1C;
-            }
-
-            [data-testid="stMetricValue"] {
-                background-color: #132C27;
-                border-radius: 8px;
-                padding: 1.5rem;
-                color: white;
-                font-size: 2rem;
-                font-weight: 600;
-                border-left: 4px solid #064E3B;
-            }
-
-            [data-testid="stMetricDelta"] {
-                background-color: rgba(5, 150, 105, 0.15);
-                color: #10B981;
-                padding: 0.25rem 0.5rem;
-                border-radius: 4px;
-                font-size: 0.875rem;
-            }
-
-            [data-testid="stMetricLabel"] {
-                color: #94A3B8;
-                font-size: 0.875rem;
-            }
-
-            /* Graph styling */
-            [data-testid="stPlotlyChart"] {
-                background-color: #132C27;
-                border-radius: 8px;
-                padding: 1rem;
-                border: 1px solid rgba(6, 78, 59, 0.3);
-            }
-
-            /* Make graph lines more visible */
-            .js-plotly-plot .plotly .scatter .lines path {
-                stroke-width: 3px !important;
-                stroke: #10B981 !important;
-            }
-
-            /* Make points more visible */
-            .js-plotly-plot .plotly .scatter .points path {
-                fill: #34D399 !important;
-                stroke: #FFFFFF !important;
-                stroke-width: 2px !important;
-            }
-
-            /* Axis labels */
-            .js-plotly-plot .plotly .xtick text,
-            .js-plotly-plot .plotly .ytick text {
-                fill: #E2E8F0 !important;
-                font-size: 12px !important;
-            }
-
-            /* Cards */
-            div[data-testid="stHorizontalBlock"] > div {
-                background-color: #132C27;
-                border-radius: 8px;
-                padding: 1rem;
-                border: 1px solid rgba(6, 78, 59, 0.3);
-            }
-
-            /* Table styling */
-            .stDataFrame {
-                background-color: #132C27;
-                border: 1px solid rgba(6, 78, 59, 0.3);
-            }
-
-            .stDataFrame th {
-                background-color: #0F291F;
-                color: #E2E8F0;
-                border-bottom: 1px solid rgba(6, 78, 59, 0.3);
-            }
-
-            .stDataFrame td {
-                color: #94A3B8;
-            }
-
-            /* Inputs */
-            .stTextInput input, .stNumberInput input {
-                background-color: #132C27;
-                border: 1px solid rgba(6, 78, 59, 0.3);
-                color: white;
-            }
-
-            /* Buttons */
-            .stButton button {
-                background-color: #064E3B;
-                color: white;
-                border: none;
-            }
-
-            .stButton button:hover {
-                background-color: #053E2F;
-            }
-
-            /* Radio buttons */
-            .stRadio label {
-                background-color: #132C27;
-                color: #E2E8F0;
-                border: 1px solid rgba(6, 78, 59, 0.3);
-            }
-
-            .stRadio label:hover {
-                background-color: #1A3933;
-                color: #10B981;
-                border-color: #064E3B;
-            }
-
-            .stRadio label[data-checked="true"] {
-                background-color: #064E3B;
-                color: white;
-                border-color: #064E3B;
-            }
-
-            /* Selectbox */
-            .stSelectbox select {
-                background-color: #132C27;
-                border: 1px solid rgba(6, 78, 59, 0.3);
-                color: white;
-            }
-
-            [data-testid="stSidebar"] {
-                background: linear-gradient(180deg, #0A1F1C 0%, #132C27 100%);
-                border-right: 2px solid #064E3B;
-                box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
-            }
-
-            /* Sidebar Header */
-            .sidebar-header {
-                background: linear-gradient(90deg, #064E3B, #065F46);
-                padding: 1.5rem 1rem;
-                margin-bottom: 1rem;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            }
-
-            .sidebar-header h2 {
-                color: white;
-                font-size: 1.25rem;
-                font-weight: 600;
-                margin: 0;
-                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            }
-
-            /* Sidebar Navigation Items */
-            .stRadio {
-                padding: 0.5rem;
-            }
-
-            .stRadio > label {
-                background-color: transparent !important;
-                border: none !important;
-                padding: 0 !important;
-            }
-
-            .stRadio label {
-                background: transparent;
-                color: #94A3B8;
-                padding: 0.75rem 1rem !important;
-                border-radius: 8px !important;
-                margin: 0.25rem 0 !important;
-                border: 1px solid transparent !important;
-                transition: all 0.3s ease !important;
-                font-size: 0.95rem !important;
-                display: flex !important;
-                align-items: center !important;
-                gap: 0.75rem !important;
-            }
-
-            .stRadio label:hover {
-                background: rgba(6, 78, 59, 0.2) !important;
-                color: #E2E8F0 !important;
-                transform: translateX(5px);
-                border-color: rgba(6, 78, 59, 0.5) !important;
-            }
-
-            .stRadio label[data-checked="true"] {
-                background: linear-gradient(90deg, #064E3B, #065F46) !important;
-                color: white !important;
-                border-color: #064E3B !important;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
-                transform: translateX(5px);
-            }
-
-            /* Sidebar icons */
-            .stRadio label::before {
-                content: '';
-                width: 24px;
-                height: 24px;
-                display: inline-block;
-                margin-right: 8px;
-                background-size: contain;
-                background-repeat: no-repeat;
-                background-position: center;
-                transition: all 0.3s ease;
-            }
-
-            /* Active indicator */
-            .stRadio label[data-checked="true"]::after {
-                content: '';
-                position: absolute;
-                left: 0;
-                top: 50%;
-                transform: translateY(-50%);
-                width: 4px;
-                height: 60%;
-                background: #10B981;
-                border-radius: 0 4px 4px 0;
-                animation: slideIn 0.3s ease;
-            }
-
-            @keyframes slideIn {
-                from {
-                    opacity: 0;
-                    transform: translate(-10px, -50%);
-                }
-                to {
-                    opacity: 1;
-                    transform: translate(0, -50%);
-                }
-            }
-
-            /* Hover animation */
-            @keyframes pulse {
-                0% {
-                    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
-                }
-                70% {
-                    box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
-                }
-                100% {
-                    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
-                }
-            }
-
-            .stRadio label:hover::before {
-                transform: scale(1.1);
-            }
-
-            .stRadio label[data-checked="true"]:hover {
-                animation: pulse 1.5s infinite;
-            }
-
-            h1, h2, h3, h4, h5, h6 {
-                color: #E2E8F0;
-            }
-
-            .stMarkdown {
-                color: #E2E8F0;
-            }
-
-            /* Activity items */
-            .activity-item {
-                background-color: #132C27;
-                padding: 1rem;
-                border-radius: 0.5rem;
-                margin-bottom: 0.5rem;
-                border: 1px solid rgba(6, 78, 59, 0.3);
-            }
-
-            .activity-item-header {
-                color: #E2E8F0;
-                font-weight: 600;
-            }
-
-            .activity-item-details {
-                color: #94A3B8;
-                font-size: 0.875rem;
-            }
-        </style>
-    """ 
+    }[theme] 

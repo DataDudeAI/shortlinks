@@ -12,7 +12,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import json
-from ui_styles import get_styles, get_theme_colors
+from ui_styles import load_ui_styles
 from organization import Organization
 from streamlit.components.v1 import html
 from streamlit.runtime.scriptrunner import add_script_run_ctx
@@ -30,22 +30,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize database at app startup
-if 'db' not in st.session_state:
-    try:
-        db = Database()
-        st.session_state.db = db
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Error initializing database: {str(e)}")
-        st.error("Error initializing database. Please check the logs.")
-
 # Must be the first Streamlit command
 st.set_page_config(
     page_title="Campaign Dashboard",
     page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
+    menu_items={
+        'Get Help': 'https://github.com/yourusername/shortlinks',
+        'Report a bug': "https://github.com/yourusername/shortlinks/issues",
+        'About': "# Campaign Dashboard\nA powerful URL shortener and campaign management tool."
+    }
 )
 
 # At the start of your app, after st.set_page_config
@@ -53,7 +48,7 @@ if 'theme' not in st.session_state:
     st.session_state.theme = 'light'
 
 # Load theme-aware styles
-st.markdown(get_styles(), unsafe_allow_html=True)
+st.markdown(load_ui_styles(), unsafe_allow_html=True)
 
 # Apply theme-specific settings
 if st.session_state.theme == 'dark':
@@ -130,9 +125,6 @@ INDIAN_STATES = [
     "Dadra and Nagar Haveli and Daman and Diu",
     "Lakshadweep"
 ]
-
-db = Database()  # Global database instance
-ui = UI(db)  # Global UI instance
 
 class URLShortener:
     def __init__(self):
@@ -371,11 +363,9 @@ class URLShortener:
         
         with st.form(key=f"edit_campaign_{campaign['short_code']}"):
             campaign_name = st.text_input("Campaign Name", value=campaign.get('campaign_name', ''))
-            campaign_type = st.selectbox(
-                "Campaign Type", 
-                list(CAMPAIGN_TYPES.keys()),
-                index=list(CAMPAIGN_TYPES.keys()).index(campaign.get('campaign_type', 'Other'))
-            )
+            campaign_type = st.selectbox("Campaign Type", 
+                                       list(CAMPAIGN_TYPES.keys()),
+                                       index=list(CAMPAIGN_TYPES.keys()).index(campaign.get('campaign_type', 'Other')))
             
             # UTM Parameters
             st.markdown("### UTM Parameters")
@@ -388,10 +378,8 @@ class URLShortener:
                 utm_content = st.text_input("Content", value=campaign.get('utm_content', ''))
             
             # Additional settings
-            expiry_date = st.date_input(
-                "Expiry Date", 
-                value=datetime.strptime(campaign.get('expiry_date', '2099-12-31'), '%Y-%m-%d') if campaign.get('expiry_date') else None
-            )
+            expiry_date = st.date_input("Expiry Date", 
+                                       value=datetime.strptime(campaign.get('expiry_date', '2099-12-31'), '%Y-%m-%d') if campaign.get('expiry_date') else None)
             
             notes = st.text_area("Notes", value=campaign.get('notes', ''))
             tags = st.text_input("Tags (comma-separated)", value=','.join(campaign.get('tags', [])))
@@ -415,44 +403,66 @@ class URLShortener:
                 else:
                     st.error("Failed to update campaign")
 
-    def create_campaign_url(self, campaign_data: dict) -> Optional[str]:
-        """Create a campaign URL"""
+    def create_campaign_url(self, form_data: dict) -> Optional[str]:
+        """Create a new campaign URL"""
         try:
-            logger.info("Starting campaign creation process...")
-            logger.info(f"URL: {campaign_data['url']}")
-            logger.info(f"Campaign Name: {campaign_data['campaign_name']}")
+            url = form_data['url']
+            campaign_name = form_data['campaign_name']
             
+            logger.info(f"Starting campaign creation process...")
+            logger.info(f"URL: {url}")
+            logger.info(f"Campaign Name: {campaign_name}")
+            
+            # Clean and validate URL
+            if not url.startswith(('http://', 'https://')):
+                url = 'https://' + url
+                logger.info(f"Modified URL: {url}")
+
             # Generate short code
-            short_code = self.generate_short_code()
+            short_code = form_data.get('custom_code') or self.generate_short_code()
             logger.info(f"Generated short code: {short_code}")
             
-            # Extract UTM parameters
+            # Prepare UTM parameters
             utm_params = {
-                'source': campaign_data.get('utm_source'),
-                'medium': campaign_data.get('utm_medium'),
-                'campaign': campaign_data.get('utm_campaign'),
-                'content': campaign_data.get('utm_content')
+                'utm_source': form_data.get('utm_source'),
+                'utm_medium': form_data.get('utm_medium'),
+                'utm_campaign': form_data.get('utm_campaign'),
+                'utm_content': form_data.get('utm_content'),
+                'utm_term': form_data.get('utm_term')
             }
+            
+            # Filter out empty UTM parameters
+            utm_params = {k: v for k, v in utm_params.items() if v}
             logger.info(f"UTM parameters: {utm_params}")
             
-            # Create short URL
+            # Add UTM parameters to URL if any exist
+            if utm_params:
+                parsed_url = urlparse(url)
+                existing_params = parse_qs(parsed_url.query)
+                all_params = {**existing_params, **utm_params}
+                new_query = urlencode(all_params, doseq=True)
+                url = parsed_url._replace(query=new_query).geturl()
+                logger.info(f"Final URL with UTM parameters: {url}")
+            
+            # Save to database
             logger.info("Attempting to save to database...")
-            short_code = self.db.create_short_url(
-                url=campaign_data['url'],
-                campaign_name=campaign_data['campaign_name'],
-                campaign_type=campaign_data['campaign_type'],
+            success = self.db.save_campaign_url(
+                url=url,
+                short_code=short_code,
+                campaign_name=campaign_name,
+                campaign_type=form_data.get('campaign_type'),
                 utm_params=utm_params
             )
             
-            if short_code:
-                logger.info(f"Successfully created campaign with short code: {short_code}")
+            if success:
+                logger.info(f"Successfully created campaign '{campaign_name}' with short code: {short_code}")
                 return short_code
             else:
                 logger.error("Database save operation failed")
                 return None
             
         except Exception as e:
-            logger.error(f"Error creating campaign URL: {str(e)}")
+            logger.error(f"Error creating campaign URL: {str(e)}", exc_info=True)
             return None
 
     def render_demographics(self, short_code: str):
@@ -1015,201 +1025,587 @@ def render_header(title: str):
         </div>
     """, unsafe_allow_html=True)
 
-def render_dashboard(db):
-    """Render dashboard with analytics"""
-    st.title("📊 Campaign Analytics")
+def render_dashboard():
+    """Render the main dashboard with consistent data"""
+    # Get comprehensive stats
+    stats = shortener.db.get_dashboard_stats()
     
-    try:
-        # Get dashboard stats
-        stats = db.get_dashboard_stats()
-        
-        # Display metrics
-        col1, col2, col3, col4 = st.columns(4)
+    # Show empty state if no campaigns exist
+    if stats['total_campaigns'] is None:
+        st.info("👋 Welcome! Create your first campaign to see analytics here.")
+        return
+    
+    # Top Metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Clicks", stats['total_clicks'])
+    with col2:
+        st.metric("Unique Visitors", stats['unique_visitors'])
+    with col3:
+        st.metric("Active Campaigns", stats['active_campaigns'])
+    with col4:
+        engagement_rate = (stats['unique_visitors'] / max(1, stats['total_clicks'])) * 100 if stats['total_clicks'] else 0
+        st.metric("Engagement Rate", f"{engagement_rate:.1f}%")
+
+    # Charts
+    if stats['daily_stats'] or stats['device_stats'] or stats['state_stats']:
+        col1, col2 = st.columns(2)
         with col1:
-            st.metric("Total Clicks", stats['total_clicks'])
+            if stats['daily_stats']:
+                df = pd.DataFrame(list(stats['daily_stats'].items()), columns=['Date', 'Clicks'])
+                fig = px.line(df, x='Date', y='Clicks', title='Daily Click Trends')
+                st.plotly_chart(fig, use_container_width=True)
+
         with col2:
-            st.metric("Unique Visitors", stats['unique_visitors'])
-        with col3:
-            st.metric("Active Campaigns", stats['active_campaigns'])
-        with col4:
-            engagement = (stats['unique_visitors'] / stats['total_clicks'] * 100) if stats['total_clicks'] > 0 else 0
-            st.metric("Engagement Rate", f"{engagement:.1f}%")
+            if stats['device_stats']:
+                df = pd.DataFrame(list(stats['device_stats'].items()), columns=['Device', 'Count'])
+                fig = px.pie(df, values='Count', names='Device', title='Device Distribution')
+                st.plotly_chart(fig, use_container_width=True)
         
-        # Recent Activity
-        st.subheader("📈 Recent Activity")
-        if stats['recent_activities']:
-            for activity in stats['recent_activities']:
-                st.markdown(f"""
-                    **{activity['campaign_name']}** ({activity['campaign_type']})  
-                    🕒 {activity['clicked_at']} | 📍 {activity['state']} | 📱 {activity['device_type']}
-                    """)
-        else:
-            st.info("No recent activity")
+        # Create two columns for Geographic Distribution and Top Campaigns
+        geo_col, top_campaigns_col = st.columns(2)
+        
+        # Geographic Distribution in left column
+        with geo_col:
+            if stats['state_stats']:
+                st.markdown("### 📍 Geographic Distribution")
+                state_df = pd.DataFrame(list(stats['state_stats'].items()), columns=['State', 'Visits'])
+                state_df = state_df.sort_values('Visits', ascending=True)
+                
+                fig = px.bar(
+                    state_df,
+                    x='Visits',
+                    y='State',
+                    orientation='h',
+                    title='Visits by State',
+                    color='Visits',
+                    color_continuous_scale='Viridis'
+                )
+                
+                # Update layout for better readability
+                fig.update_layout(
+                    height=400,  # Fixed height to match top campaigns table
+                    xaxis_title="Number of Visits",
+                    yaxis_title="State",
+                    showlegend=False,
+                    margin=dict(l=0, r=0, t=30, b=0)  # Adjust margins
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+
+        # Top Campaigns in right column
+        with top_campaigns_col:
+            st.markdown("### 🏆 Top Performing Campaigns")
+            if stats['top_campaigns']:
+                df = pd.DataFrame(stats['top_campaigns'])
+                
+                # Format the dataframe
+                if 'last_click' in df.columns:
+                    df['last_click'] = pd.to_datetime(df['last_click']).dt.strftime('%Y-%m-%d %H:%M')
+                
+                # Configure columns
+                st.dataframe(
+                    df,
+                    column_config={
+                        "campaign_name": st.column_config.TextColumn("Campaign"),
+                        "clicks": st.column_config.NumberColumn("Clicks", format="%d"),
+                        "unique_visitors": st.column_config.NumberColumn("Unique", format="%d"),
+                        "campaign_type": st.column_config.TextColumn("Type"),
+                        "last_click": st.column_config.TextColumn("Last Click")
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                    height=400  # Match height with geographic chart
+                )
+            else:
+                st.info("No campaign data available yet")
+
+    # Recent Activity (Limited to 5)
+    st.markdown("### 📊 Recent Activity")
+    
+    # Show only 5 most recent activities
+    recent_activities = stats['recent_activities'][:5]
+    
+    if recent_activities:
+        for activity in recent_activities:
+            render_activity_item(activity)
             
-        # Campaign Management
-        st.subheader("🎯 Campaign Management")
-        render_campaign_details(db)
-        
-    except Exception as e:
-        logger.error(f"Error rendering dashboard: {str(e)}")
-        st.error("Error loading dashboard data")
-
-def render_campaign_creation(db):
-    """Render campaign creation form"""
-    st.subheader("Create New Campaign")
-    
-    with st.form("campaign_form"):
-        campaign_name = st.text_input("Campaign Name")
-        campaign_type = st.selectbox("Campaign Type", list(CAMPAIGN_TYPES.keys()))
-        url = st.text_input("URL")
-        
-        # UTM Parameters
-        with st.expander("UTM Parameters"):
-            utm_source = st.text_input("Source", placeholder="e.g., facebook")
-            utm_medium = st.text_input("Medium", placeholder="e.g., social")
-            utm_campaign = st.text_input("Campaign", placeholder="e.g., summer_sale")
-            utm_content = st.text_input("Content", placeholder="e.g., banner_1")
-        
-        submitted = st.form_submit_button("Create Campaign")
-        
-        if submitted:
-            try:
-                if not campaign_name or not url:
-                    st.error("Please fill in all required fields")
-                    return
+        # Add "View All" button
+        if len(stats['recent_activities']) > 5:
+            if st.button("View All Activities"):
+                st.session_state.show_all_activities = True
                 
-                # Create campaign
-                short_code = db.create_short_url(
-                    url=url,
-                    campaign_name=campaign_name,
-                    campaign_type=campaign_type,
-                    utm_params={
-                        'source': utm_source,
-                        'medium': utm_medium,
-                        'campaign': utm_campaign,
-                        'content': utm_content
-                    }
-                )
-                
-                if short_code:
-                    st.success("Campaign created successfully!")
-                    st.markdown(f"Short URL: `{BASE_URL}?r={short_code}`")
-                else:
-                    st.error("Failed to create campaign")
-                    
-            except Exception as e:
-                logger.error(f"Error creating campaign: {str(e)}")
-                st.error("Error creating campaign")
-
-def render_campaign_details(db):
-    """Render campaign details section"""
-    st.markdown("### 🎯 Campaign Details")
-
-    # Get all campaigns
-    campaigns = db.get_all_campaigns()
-    
-    if campaigns:
-        # Create a DataFrame for display
-        df = pd.DataFrame(campaigns)
-        
-        # Add short URL column
-        df['short_url'] = df['short_code'].apply(lambda x: f"{BASE_URL}?r={x}")
-        
-        # Configure columns for editable table
-        edited_df = st.data_editor(
-            df,
-            column_config={
-                "campaign_name": st.column_config.TextColumn(
-                    "Campaign",
-                    width="medium",
-                    help="Name of the campaign"
-                ),
-                "campaign_type": st.column_config.SelectboxColumn(
-                    "Type",
-                    width="small",
-                    options=list(CAMPAIGN_TYPES.keys())
-                ),
-                "short_url": st.column_config.LinkColumn(
-                    "Short URL",
-                    width="medium",
-                    help="Click to copy"
-                ),
-                "total_clicks": st.column_config.NumberColumn(
-                    "Clicks",
-                    width="small",
-                    format="%d"
-                ),
-                "created_at": st.column_config.DatetimeColumn(
-                    "Created",
-                    width="small",
-                    format="MMM DD, YYYY"
-                ),
-                "last_clicked": st.column_config.DatetimeColumn(
-                    "Last Click",
-                    width="small",
-                    format="MMM DD, YYYY"
-                ),
-                "is_active": st.column_config.CheckboxColumn(
-                    "Active",
-                    width="small",
-                    help="Campaign status"
-                )
-            },
-            hide_index=True,
-            use_container_width=True,
-            disabled=["short_url", "total_clicks", "created_at", "last_clicked"],
-            key="campaign_table"
-        )
-
-        # Handle edits to campaign details
-        if not df.equals(edited_df):
-            try:
-                # Get the changed rows
-                changed_mask = (df != edited_df).any(axis=1)
-                changed_rows = edited_df[changed_mask]
-                
-                for idx, row in changed_rows.iterrows():
-                    # Update campaign in database
-                    success = db.update_campaign(
-                        short_code=df.loc[idx, 'short_code'],
-                        campaign_name=row['campaign_name'],
-                        campaign_type=row['campaign_type'],
-                        is_active=row['is_active']
-                    )
-                    if success:
-                        st.success(f"Updated campaign: {row['campaign_name']}")
-                        time.sleep(0.5)
-                        st.rerun()
-                    else:
-                        st.error(f"Failed to update campaign: {row['campaign_name']}")
-                
-            except Exception as e:
-                st.error(f"Error updating campaigns: {str(e)}")
+        # Show all activities in a modal/expander if requested
+        if st.session_state.get('show_all_activities', False):
+            with st.expander("All Activities", expanded=True):
+                for activity in stats['recent_activities'][5:]:
+                    render_activity_item(activity)
+                if st.button("Show Less"):
+                    st.session_state.show_all_activities = False
     else:
-        st.info("No campaigns created yet")
+        st.info("No recent activity to show")
+
+def clear_all_cache():
+    """Clear all Streamlit cache"""
+    try:
+        # Clear all st.cache_data
+        for key in [k for k in st.session_state.keys() if k.startswith('cache_')]:
+            del st.session_state[key]
+        
+        # Reset theme
+        st.session_state.theme = 'light'
+        
+        # Clear any other session state
+        keys_to_keep = ['theme']
+        for key in [k for k in st.session_state.keys() if k not in keys_to_keep]:
+            del st.session_state[key]
+            
+    except Exception as e:
+        logger.error(f"Error clearing cache: {str(e)}")
 
 def main():
     try:
-        # Get database instance from session state
-        db = st.session_state.db
+        # Initialize global state
+        if 'initialized' not in st.session_state:
+            st.session_state.initialized = True
+            st.session_state.shortener = None
         
-        # Create tabs for different sections
-        tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "🎯 Create Campaign", "⚙️ Settings"])
+        # Check for redirect first
+        params = st.query_params
+        if 'r' in params:
+            short_code = params['r']
+            
+            # Initialize shortener if needed
+            if not st.session_state.shortener:
+                st.session_state.shortener = URLShortener()
+            
+            # Get URL info and record click
+            target_url = st.session_state.shortener.db.handle_redirect(short_code)
+            
+            if target_url:
+                # Show loading message
+                st.info(f"Redirecting to {target_url}...")
+                
+                # Use JavaScript for immediate redirect
+                html_code = f"""
+                    <html>
+                        <head>
+                            <script>
+                                window.location.href = "{target_url}";
+                            </script>
+                        </head>
+                        <body>
+                            <p>If you are not redirected automatically, <a href="{target_url}">click here</a>.</p>
+                        </body>
+                    </html>
+                """
+                st.components.v1.html(html_code, height=100)
+                return
+            else:
+                st.error("Invalid short URL")
+                return
+
+        # Initialize components
+        if not st.session_state.shortener:
+            st.session_state.shortener = URLShortener()
         
-        with tab1:
-            render_dashboard(db)
+        global shortener
+        shortener = st.session_state.shortener
+        
+        # Rest of your main function...
+        auto_collapse_sidebar()
+        capture_client_info()
+        
+        # Sidebar Navigation
+        with st.sidebar:
+            st.image(
+                "https://via.placeholder.com/150x50?text=Logo",
+                use_container_width=True
+            )
             
-        with tab2:
-            render_campaign_creation(db)
-            
-        with tab3:
-            render_settings(db)
-            
+            selected_page = st.radio(
+                "Navigation",
+                ["🏠 Dashboard", "🔗 Create Campaign", "📈 Analytics", "⚙️ Settings"],
+                label_visibility="collapsed"
+            )
+        
+        # Page routing
+        if selected_page == "🏠 Dashboard":
+            render_header("Campaign Dashboard")
+            render_dashboard()
+        elif selected_page == "🔗 Create Campaign":
+            render_header("Create Campaign")
+            create_campaign()
+        elif selected_page == "📈 Analytics":
+            render_header("Analytics Overview")
+            shortener.render_analytics_dashboard()
+        elif selected_page == "⚙️ Settings":
+            render_header("Settings")
+            render_settings()
+
     except Exception as e:
         logger.error(f"Error in main: {str(e)}")
-        st.error("An error occurred. Please check the logs.")
+        st.error("An error occurred. Please try refreshing the page.")
 
-def render_settings(db):
+def create_campaign():
+    """Create new campaign form"""
+    st.markdown("### 🎯 Campaign Details")
+    
+    # Add custom CSS for green button
+    st.markdown("""
+        <style>
+        div.stButton > button[kind="primary"] {
+            background-color: #10B981;
+            border-color: #10B981;
+        }
+        div.stButton > button[kind="primary"]:hover {
+            background-color: #059669;
+            border-color: #059669;
+        }
+        div.stButton > button[kind="primary"]:active {
+            background-color: #047857;
+            border-color: #047857;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    with st.form("create_campaign", clear_on_submit=True):
+        # Campaign Info Section
+        st.markdown("#### Basic Information")
+        campaign_name = st.text_input(
+            "Campaign Name",
+            key="campaign_name",
+            placeholder="Enter campaign name",
+            help="A unique name for your campaign"
+        )
+        
+        campaign_type = st.selectbox(
+            "Campaign Type",
+            options=list(CAMPAIGN_TYPES.keys()),
+            format_func=lambda x: f"{CAMPAIGN_TYPES[x]} {x}",
+            help="Select the type of campaign"
+        )
+        
+        original_url = st.text_input(
+            "Original URL",
+            key="original_url",
+            placeholder="https://your-url.com",
+            help="The URL you want to shorten"
+        )
+
+        # Add QR Code option
+        generate_qr = st.checkbox("Generate QR Code", value=False, help="Create a QR code for this link")
+
+        # UTM Parameters Section
+        st.markdown("#### 🎯 UTM Parameters")
+        with st.expander("Configure UTM Parameters", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                utm_source = st.text_input(
+                    "Source",
+                    placeholder="e.g., facebook",
+                    help="The referrer (e.g., facebook, newsletter)"
+                )
+                utm_campaign = st.text_input(
+                    "Campaign",
+                    placeholder="e.g., summer_sale",
+                    help="Campaign specific identifier"
+                )
+            with col2:
+                utm_medium = st.text_input(
+                    "Medium",
+                    placeholder="e.g., social",
+                    help="Marketing medium (e.g., cpc, social)"
+                )
+                utm_content = st.text_input(
+                    "Content",
+                    placeholder="e.g., blue_banner",
+                    help="Use to differentiate ads"
+                )
+
+        # Submit button
+        submitted = st.form_submit_button(
+            "Create Campaign",
+            type="primary",
+            use_container_width=True
+        )
+
+    if submitted:
+        if not campaign_name or not original_url:
+            st.error("Please fill in all required fields")
+            return
+
+        try:
+            # Create campaign
+            short_code = shortener.create_short_url(
+                url=original_url,
+                campaign_name=campaign_name,
+                campaign_type=campaign_type,
+                utm_params={
+                    'source': utm_source,
+                    'medium': utm_medium,
+                    'campaign': utm_campaign,
+                    'content': utm_content
+                }
+            )
+            
+            # Generate short URL
+            short_url = f"{BASE_URL}?r={short_code}"
+            
+            # Show success message with two cards side by side
+            st.success("Campaign created successfully!")
+
+            col1, col2 = st.columns(2)
+
+            # Short URL Card
+            with col1:
+                st.markdown("""
+                <div style='
+                    background-color: #f0f9ff;
+                    padding: 1rem;
+                    border-radius: 0.5rem;
+                    margin: 1rem 0;
+                    height: 100%;
+                    border: 1px solid #e2e8f0;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                '>
+                    <div style='display: flex; align-items: center; margin-bottom: 0.5rem;'>
+                        <span style='font-size: 1.25rem; margin-right: 0.5rem;'>🔗</span>
+                        <span style='font-weight: 600; color: #1a202c;'>Short URL</span>
+                    </div>
+                    <a href='{url}' target='_blank' style='color: #0891b2; text-decoration: none; word-break: break-all;'>{url}</a>
+                    <p style='margin-top: 0.5rem; font-size: 0.875rem; color: #64748b;'>
+                        Click to test the link and track analytics
+                    </p>
+                    <div style='display: flex; gap: 0.5rem; margin-top: 1rem;'>
+                        <a href="{url}" target="_blank" style='
+                            background-color: #0891b2;
+                            color: white;
+                            padding: 0.5rem 1rem;
+                            border-radius: 0.375rem;
+                            text-decoration: none;
+                            font-size: 0.875rem;
+                        '>Open Link</a>
+                    </div>
+                </div>
+                """.format(url=short_url), unsafe_allow_html=True)
+
+            # Campaign Details Card with QR Code
+            with col2:
+                st.markdown("""
+                <div style='
+                    background-color: #f0f9ff;
+                    padding: 1rem;
+                    border-radius: 0.5rem;
+                    margin: 1rem 0;
+                    height: 100%;
+                    border: 1px solid #e2e8f0;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                '>
+                    <div style='display: flex; align-items: center; margin-bottom: 0.5rem;'>
+                        <span style='font-size: 1.25rem; margin-right: 0.5rem;'>📱</span>
+                        <span style='font-weight: 600; color: #1a202c;'>Campaign Details</span>
+                    </div>
+                    <div style='font-size: 0.875rem; color: #4b5563;'>
+                        <p style='margin: 0.25rem 0;'><strong>Campaign:</strong> {name}</p>
+                        <p style='margin: 0.25rem 0;'><strong>Type:</strong> {type}</p>
+                        <p style='margin: 0.25rem 0;'><strong>Created:</strong> {date}</p>
+                    </div>
+                """.format(
+                    name=campaign_name,
+                    type=campaign_type,
+                    date=datetime.now().strftime("%b %d, %Y")
+                ), unsafe_allow_html=True)
+
+                # Generate and display QR code if requested
+                if generate_qr:
+                    qr = qrcode.QRCode(
+                        version=1,
+                        error_correction=qrcode.constants.ERROR_CORRECT_L,
+                        box_size=10,
+                        border=4,
+                    )
+                    qr.add_data(short_url)
+                    qr.make(fit=True)
+
+                    # Create QR code image
+                    img = qr.make_image(fill_color="black", back_color="white")
+                    
+                    # Convert to bytes
+                    img_bytes = BytesIO()
+                    img.save(img_bytes, format='PNG')
+                    
+                    # Display QR code
+                    st.image(img_bytes, caption="Scan QR Code", width=200)
+                
+                st.markdown("""
+                    <div style='display: flex; gap: 0.5rem; margin-top: 1rem;'>
+                        <button onclick="navigator.clipboard.writeText('{url}')" style='
+                            background-color: #0891b2;
+                            color: white;
+                            padding: 0.5rem 1rem;
+                            border-radius: 0.375rem;
+                            border: none;
+                            cursor: pointer;
+                            font-size: 0.875rem;
+                        '>Copy Link</button>
+                    </div>
+                </div>
+                """.format(url=short_url), unsafe_allow_html=True)
+
+            # Test click button
+            if st.button("Test Click (Record Only)", type="secondary"):
+                if shortener.db.record_click(
+                    short_code=short_code,
+                    ip_address="127.0.0.1",
+                    user_agent="Test Click",
+                    referrer="Test",
+                    state="Test",
+                    device_type="Test",
+                    browser="Test",
+                    os="Test"
+                ):
+                    st.success("Test click recorded! Check the analytics.")
+                    time.sleep(1)
+                    st.rerun()
+
+        except ValueError as e:
+            st.error(str(e))
+        except Exception as e:
+            st.error(f"Error creating campaign: {str(e)}")
+
+    # Add Campaign Manager Section below the form
+    st.markdown("---")  # Add a divider
+    st.markdown("### 📋 Manage Campaigns")
+    
+    # Get all campaigns
+    campaigns = shortener.db.get_all_urls()
+    
+    if not campaigns:
+        st.info("No campaigns yet. Create your first campaign above!")
+        return
+    
+    # Create DataFrame for campaign data
+    df = pd.DataFrame(campaigns)
+    
+    # Convert datetime strings to datetime objects
+    df['created_at'] = pd.to_datetime(df['created_at'])
+    df['last_clicked'] = pd.to_datetime(df['last_clicked'])
+    
+    # Add short URL column
+    df['short_url'] = df['short_code'].apply(lambda x: f"{BASE_URL}?r={x}")
+    
+    # Add quick filters in a single row
+    filter_col1, filter_col2, filter_col3 = st.columns(3)
+    with filter_col1:
+        campaign_type_filter = st.selectbox(
+            "Filter by Type",
+            ["All Types"] + list(CAMPAIGN_TYPES.keys())
+        )
+    with filter_col2:
+        status_filter = st.selectbox(
+            "Filter by Status",
+            ["All", "Active", "Inactive"]
+        )
+    with filter_col3:
+        search = st.text_input("Search Campaigns", placeholder="Search by name...")
+    
+    # Apply filters
+    filtered_df = df.copy()
+    if campaign_type_filter != "All Types":
+        filtered_df = filtered_df[filtered_df['campaign_type'] == campaign_type_filter]
+    if status_filter != "All":
+        filtered_df = filtered_df[filtered_df['is_active'] == (status_filter == "Active")]
+    if search:
+        filtered_df = filtered_df[filtered_df['campaign_name'].str.contains(search, case=False)]
+    
+    # Configure columns for the data editor
+    columns_config = {
+        "campaign_name": st.column_config.TextColumn(
+            "Campaign Name",
+            width="medium",
+            help="Name of the campaign"
+        ),
+        "campaign_type": st.column_config.SelectboxColumn(
+            "Type",
+            width="small",
+            options=list(CAMPAIGN_TYPES.keys())
+        ),
+        "short_url": st.column_config.LinkColumn(
+            "Short URL",
+            width="medium",
+            help="Click to open"
+        ),
+        "original_url": st.column_config.LinkColumn(
+            "Original URL",
+            width="medium"
+        ),
+        "total_clicks": st.column_config.NumberColumn(
+            "Clicks",
+            width="small",
+            format="%d"
+        ),
+        "created_at": st.column_config.DatetimeColumn(
+            "Created",
+            width="medium",
+            format="MMM DD, YYYY"
+        ),
+        "last_clicked": st.column_config.DatetimeColumn(
+            "Last Click",
+            width="medium",
+            format="MMM DD, YYYY"
+        ),
+        "is_active": st.column_config.CheckboxColumn(
+            "Active",
+            width="small"
+        )
+    }
+    
+    # Display editable table
+    edited_df = st.data_editor(
+        filtered_df,
+        column_config=columns_config,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="dynamic",
+        key="campaign_table",
+        disabled=["short_url", "original_url", "total_clicks", "created_at", "last_clicked"],
+        column_order=[
+            "campaign_name",
+            "campaign_type",
+            "short_url",
+            "original_url",
+            "total_clicks",
+            "created_at",
+            "last_clicked",
+            "is_active"
+        ]
+    )
+    
+    # Handle edits
+    if not filtered_df.equals(edited_df):
+        try:
+            # Get the changed rows
+            changed_mask = (filtered_df != edited_df).any(axis=1)
+            changed_rows = edited_df[changed_mask]
+            
+            for idx, row in changed_rows.iterrows():
+                # Update campaign in database
+                shortener.db.update_campaign(
+                    short_code=df.loc[idx, 'short_code'],
+                    campaign_name=row['campaign_name'],
+                    campaign_type=row['campaign_type'],
+                    is_active=row['is_active']
+                )
+            
+            st.success("Campaign(s) updated successfully!")
+            time.sleep(1)
+            st.rerun()
+            
+        except Exception as e:
+            st.error(f"Error updating campaign(s): {str(e)}")
+
+def render_settings():
     """Render settings page"""
     # Create tabs for different settings
     settings_tab1, settings_tab2, settings_tab3 = st.tabs([
@@ -1301,6 +1697,57 @@ def render_settings(db):
         
         if st.button("Save Settings", type="primary"):
             st.success("Settings saved successfully!")
+
+def render_activity_item(activity: dict):
+    """Render a single activity item with styling"""
+    
+    # Format timestamp
+    try:
+        timestamp = datetime.strptime(activity['clicked_at'], '%Y-%m-%d %H:%M:%S')
+        formatted_time = timestamp.strftime('%b %d, %Y %I:%M %p')
+    except:
+        formatted_time = activity['clicked_at']
+    
+    # Get emoji for campaign type
+    campaign_emojis = {
+        "Social Media": "🔵",
+        "Email": "📧",
+        "Paid Ads": "💰",
+        "Blog": "📝",
+        "Affiliate": "🤝",
+        "Other": "🔗"
+    }
+    campaign_emoji = campaign_emojis.get(activity.get('campaign_type'), '🔗')
+    
+    # Get emoji for device type
+    device_emojis = {
+        "Desktop": "💻",
+        "Mobile": "📱",
+        "Tablet": "📱",
+        "Unknown": "❓"
+    }
+    device_emoji = device_emojis.get(activity.get('device_type'), '❓')
+    
+    st.markdown(f"""
+        <div style='
+            background-color: white;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        '>
+            <div style='display: flex; align-items: center; margin-bottom: 0.5rem;'>
+                <span style='font-size: 1.25rem; margin-right: 0.5rem;'>{campaign_emoji}</span>
+                <span style='font-weight: 600; color: #1a202c;'>{activity['campaign_name']}</span>
+            </div>
+            <div style='display: flex; gap: 1rem; color: #64748b; font-size: 0.875rem;'>
+                <span>{device_emoji} {activity['device_type']}</span>
+                <span>📍 {activity.get('state', 'Unknown')}</span>
+                <span>🕒 {formatted_time}</span>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main() 
