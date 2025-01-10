@@ -37,15 +37,15 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
     menu_items={
-        'Get Help': 'https://github.com/yourusername/shortlinks',
-        'Report a bug': "https://github.com/yourusername/shortlinks/issues",
+        'Get Help': 'https://github.com/DataDudeAI/shortlinks',
+        'Report a bug': "https://github.com/DataDudeAI/shortlinks/issues",
         'About': "# Campaign Dashboard\nA powerful URL shortener and campaign management tool."
     }
 )
 
 # At the start of your app, after st.set_page_config
 if 'theme' not in st.session_state:
-    st.session_state.theme = 'light'
+    st.session_state.theme = 'dark'
 
 # Load theme-aware styles
 st.markdown(load_ui_styles(), unsafe_allow_html=True)
