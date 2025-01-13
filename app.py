@@ -1164,14 +1164,15 @@ def main():
         if 'auth' not in st.session_state:
             st.session_state.auth = Auth(st.session_state.db)
             
-        if 'shortener' not in st.session_state:
-            st.session_state.shortener = URLShortener()  # Will use existing db instance
-            
-        # Check authentication
+        # Check authentication first
         if not st.session_state.auth.check_authentication():
-            render_login_page()
+            st.session_state.auth.render_login_page()
             return
-
+            
+        # Initialize shortener only after authentication
+        if 'shortener' not in st.session_state:
+            st.session_state.shortener = URLShortener()
+            
         # Use existing shortener instance
         global shortener
         shortener = st.session_state.shortener

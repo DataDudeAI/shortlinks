@@ -16,12 +16,16 @@ class Auth:
             logger.info(f"Retrieved user data: {user}")
             
             if user and user['password'] == password:  # In production, use proper password hashing
+                # Create user session data
                 user_data = {
                     'username': user['username'],
                     'organization': user['organization'],
                     'organization_id': user['organization_id'],
-                    'role': user['role']
+                    'role': user['role'],
+                    'is_authenticated': True  # Add authentication flag
                 }
+                # Store in session state
+                st.session_state.user = user_data
                 logger.info(f"Login successful for user: {username}")
                 return user_data
             logger.warning(f"Login failed for user: {username}")
@@ -35,7 +39,7 @@ class Auth:
         st.markdown("""
             <div class="login-container">
                 <div class="login-header">
-                    <h2>🎯 Campaign Dashboard</h2>
+                    <h2>🎯 VBG Campaign Dashboard</h2>
                     <p>Sign in to your account</p>
                 </div>
             </div>
@@ -48,19 +52,28 @@ class Auth:
 
             if submitted:
                 if username and password:
-                    user = self.login(username, password)
-                    if user:
-                        st.session_state.user = user
+                    if self.login(username, password):
                         st.success("Login successful!")
                         st.rerun()
                     else:
                         st.error("Invalid username or password")
+                        logger.warning(f"Failed login attempt for user: {username}")
                 else:
                     st.error("Please enter both username and password")
 
+        # Show demo credentials
+        st.markdown("""
+            <div style="text-align: center; margin-top: 2rem;">
+                <p style="color: #666;">Demo Credentials:</p>
+                <p>Admin: admin / admin123</p>
+                <p>User: nandan / nandan123</p>
+            </div>
+        """, unsafe_allow_html=True)
+
     def check_authentication(self):
         """Check if user is authenticated"""
-        is_auth = 'user' in st.session_state
+        is_auth = ('user' in st.session_state and 
+                   st.session_state.user.get('is_authenticated', False))
         logger.info(f"Authentication check - Is authenticated: {is_auth}")
         return is_auth
 
