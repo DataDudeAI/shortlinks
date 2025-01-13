@@ -21,13 +21,23 @@ class Database:
         self.db_path = "urls.db"
         
         try:
-            # Force database reset for testing
-            if os.path.exists(self.db_path):
-                os.remove(self.db_path)
-                logger.info("Existing database removed")
-            
-            logger.info("Creating new database...")
-            self.initialize_database()
+            # Only initialize if database doesn't exist
+            if not os.path.exists(self.db_path):
+                logger.info("Creating new database...")
+                self.initialize_database()
+            else:
+                # Check if tables exist
+                conn = self.get_connection()
+                c = conn.cursor()
+                c.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = [table[0] for table in c.fetchall()]
+                conn.close()
+                
+                # Initialize only if required tables are missing
+                required_tables = {'organizations', 'users', 'urls', 'analytics'}
+                if not required_tables.issubset(set(tables)):
+                    logger.info("Reinitializing database with missing tables...")
+                    self.initialize_database()
             
         except Exception as e:
             logger.error(f"Database initialization error: {str(e)}")
@@ -42,13 +52,7 @@ class Database:
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Drop existing tables if they exist
-            c.execute("DROP TABLE IF EXISTS analytics")
-            c.execute("DROP TABLE IF EXISTS urls")
-            c.execute("DROP TABLE IF EXISTS users")
-            c.execute("DROP TABLE IF EXISTS organizations")
-            
-            # Create organizations table
+            # Create organizations table if not exists
             c.execute('''
                 CREATE TABLE IF NOT EXISTS organizations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,7 +62,7 @@ class Database:
                 )
             ''')
             
-            # Create users table
+            # Create users table if not exists
             c.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,7 +75,7 @@ class Database:
                 )
             ''')
             
-            # Create URLs table
+            # Create URLs table if not exists
             c.execute('''
                 CREATE TABLE IF NOT EXISTS urls (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,7 +96,7 @@ class Database:
                 )
             ''')
             
-            # Create analytics table
+            # Create analytics table if not exists
             c.execute('''
                 CREATE TABLE IF NOT EXISTS analytics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,13 +114,12 @@ class Database:
                 )
             ''')
 
-            # Insert default organization with VBG's official domain
+            # Insert default organization and users if they don't exist
             c.execute('''
                 INSERT OR IGNORE INTO organizations (id, name, domain) 
                 VALUES (1, 'VBG Game Studios', 'virtualbattleground.in')
             ''')
 
-            # Insert default users
             c.execute('''
                 INSERT OR IGNORE INTO users (username, password, organization_id, role) 
                 VALUES ('admin', 'admin123', 1, 'admin')
