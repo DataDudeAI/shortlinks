@@ -512,143 +512,148 @@ class Database:
             conn.close()
 
     def get_dashboard_stats(self) -> Dict[str, Any]:
-        """Get comprehensive dashboard statistics"""
-        conn = self.get_connection()
-        c = conn.cursor()
+        """Get dashboard statistics"""
         try:
-            # Initialize empty stats
             stats = {
-                'total_clicks': None,
-                'unique_visitors': None,
-                'total_campaigns': None,
-                'active_campaigns': None,
+                'total_clicks': 0,
+                'unique_visitors': 0,
+                'total_campaigns': 0,
+                'active_campaigns': 0,
                 'recent_activities': [],
                 'top_campaigns': [],
                 'state_stats': {},
                 'device_stats': {},
-                'daily_stats': {}
+                'daily_stats': {},
+                'previous_clicks': 0,
+                'previous_unique': 0,
+                'bounce_rate': 0,
+                'avg_time': 0
             }
             
-            # Check if any data exists
-            c.execute("SELECT COUNT(*) FROM urls")
-            if c.fetchone()[0] == 0:
-                # Return empty stats if no data
-                return stats
-            
-            # Get basic metrics
-            c.execute("""
-                SELECT 
-                    COUNT(DISTINCT a.id) as total_clicks,
-                    COUNT(DISTINCT a.ip_address) as unique_visitors,
-                    COUNT(DISTINCT u.id) as total_campaigns,
-                    COUNT(DISTINCT CASE WHEN u.is_active = 1 THEN u.id END) as active_campaigns
-                FROM urls u
-                LEFT JOIN analytics a ON u.short_code = a.short_code
-            """)
-            row = c.fetchone()
-            if row:
-                stats.update({
-                    'total_clicks': row[0] or 0,
-                    'unique_visitors': row[1] or 0,
-                    'total_campaigns': row[2] or 0,
-                    'active_campaigns': row[3] or 0
-                })
-
-            # Only fetch other stats if we have campaigns
-            if stats['total_campaigns']:
-                # Get recent activities
-                c.execute("""
+            # Get basic metrics with time comparison
+            query = """
+                WITH current_stats AS (
                     SELECT 
-                        u.campaign_name,
-                        a.clicked_at,
-                        a.state,
-                        a.device_type,
-                        a.browser,
-                        u.campaign_type
-                    FROM analytics a
-                    JOIN urls u ON a.short_code = u.short_code
-                    ORDER BY a.clicked_at DESC
-                    LIMIT 10
-                """)
-                stats['recent_activities'] = [{
-                    'campaign_name': row[0],
-                    'clicked_at': row[1],
-                    'state': row[2],
-                    'device_type': row[3],
-                    'browser': row[4],
-                    'campaign_type': row[5]
-                } for row in c.fetchall()]
-
-                # Get top performing campaigns
-                c.execute("""
-                    SELECT 
-                        u.campaign_name,
-                        COUNT(a.id) as clicks,
-                        COUNT(DISTINCT a.ip_address) as unique_visitors,
-                        u.campaign_type,
-                        MAX(a.clicked_at) as last_click
-                    FROM urls u
-                    LEFT JOIN analytics a ON u.short_code = a.short_code
-                    GROUP BY u.id
-                    ORDER BY clicks DESC
-                    LIMIT 5
-                """)
-                stats['top_campaigns'] = [{
-                    'campaign_name': row[0],
-                    'clicks': row[1],
-                    'unique_visitors': row[2],
-                    'campaign_type': row[3],
-                    'last_click': row[4]
-                } for row in c.fetchall()]
-
-                # Get state distribution
-                c.execute("""
-                    SELECT state, COUNT(*) as count
-                    FROM analytics
-                    WHERE state IS NOT NULL
-                    GROUP BY state
-                    ORDER BY count DESC
-                """)
-                stats['state_stats'] = dict(c.fetchall())
-
-                # Get device distribution
-                c.execute("""
-                    SELECT device_type, COUNT(*) as count
-                    FROM analytics
-                    WHERE device_type IS NOT NULL
-                    GROUP BY device_type
-                """)
-                stats['device_stats'] = dict(c.fetchall())
-
-                # Get daily clicks for the last 30 days
-                c.execute("""
-                    SELECT 
-                        date(clicked_at) as click_date,
-                        COUNT(*) as clicks
+                        COUNT(*) as total_clicks,
+                        COUNT(DISTINCT ip_address) as unique_visitors,
+                        AVG(time_on_page) as avg_time,
+                        (SELECT COUNT(*) FROM urls) as total_campaigns,
+                        (SELECT COUNT(*) FROM urls WHERE is_active = 1) as active_campaigns
                     FROM analytics
                     WHERE clicked_at >= date('now', '-30 days')
-                    GROUP BY click_date
-                    ORDER BY click_date
-                """)
-                stats['daily_stats'] = dict(c.fetchall())
-
+                ),
+                previous_stats AS (
+                    SELECT 
+                        COUNT(*) as prev_clicks,
+                        COUNT(DISTINCT ip_address) as prev_unique
+                    FROM analytics
+                    WHERE clicked_at BETWEEN date('now', '-60 days') AND date('now', '-30 days')
+                ),
+                bounce_stats AS (
+                    SELECT 
+                        (COUNT(CASE WHEN time_on_page < 10 THEN 1 END) * 100.0 / COUNT(*)) as bounce_rate
+                    FROM analytics
+                    WHERE clicked_at >= date('now', '-30 days')
+                )
+                SELECT 
+                    current_stats.*,
+                    previous_stats.prev_clicks,
+                    previous_stats.prev_unique,
+                    bounce_stats.bounce_rate
+                FROM current_stats, previous_stats, bounce_stats
+            """
+            
+            result = self.execute_query(query, fetch_one=True)
+            if result:
+                stats.update({
+                    'total_clicks': result['total_clicks'],
+                    'unique_visitors': result['unique_visitors'],
+                    'total_campaigns': result['total_campaigns'],
+                    'active_campaigns': result['active_campaigns'],
+                    'previous_clicks': result['prev_clicks'],
+                    'previous_unique': result['prev_unique'],
+                    'bounce_rate': round(result['bounce_rate'], 2) if result['bounce_rate'] else 0,
+                    'avg_time': round(result['avg_time'], 2) if result['avg_time'] else 0
+                })
+            
+            # Get device stats
+            query = """
+                SELECT 
+                    device_type,
+                    COUNT(*) as count
+                FROM analytics
+                WHERE clicked_at >= date('now', '-30 days')
+                GROUP BY device_type
+            """
+            device_results = self.execute_query(query)
+            stats['device_stats'] = {row['device_type']: row['count'] for row in device_results}
+            
+            # Get browser stats
+            query = """
+                SELECT 
+                    browser,
+                    COUNT(*) as count
+                FROM analytics
+                WHERE clicked_at >= date('now', '-30 days')
+                GROUP BY browser
+            """
+            browser_results = self.execute_query(query)
+            stats['browser_stats'] = {row['browser']: row['count'] for row in browser_results}
+            
+            # Get recent activities with enhanced details
+            query = """
+                SELECT 
+                    a.clicked_at,
+                    a.device_type,
+                    a.browser,
+                    a.state,
+                    a.time_on_page,
+                    u.campaign_name,
+                    u.campaign_type
+                FROM analytics a
+                JOIN urls u ON a.short_code = u.short_code
+                ORDER BY a.clicked_at DESC
+                LIMIT 10
+            """
+            recent_activities = self.execute_query(query)
+            stats['recent_activities'] = [dict(activity) for activity in recent_activities]
+            
+            # Get top campaigns with engagement metrics
+            query = """
+                SELECT 
+                    u.campaign_name,
+                    u.campaign_type,
+                    COUNT(a.id) as clicks,
+                    COUNT(DISTINCT a.ip_address) as unique_visitors,
+                    AVG(a.time_on_page) as avg_time,
+                    (COUNT(CASE WHEN a.time_on_page < 10 THEN 1 END) * 100.0 / COUNT(*)) as bounce_rate
+                FROM urls u
+                LEFT JOIN analytics a ON u.short_code = a.short_code
+                GROUP BY u.campaign_name, u.campaign_type
+                ORDER BY clicks DESC
+                LIMIT 5
+            """
+            stats['top_campaigns'] = self.execute_query(query)
+            
             return stats
-
+            
         except Exception as e:
             logger.error(f"Error getting dashboard stats: {str(e)}")
             return {
-                'total_clicks': None,
-                'unique_visitors': None,
-                'total_campaigns': None,
-                'active_campaigns': None,
+                'total_clicks': 0,
+                'unique_visitors': 0,
+                'total_campaigns': 0,
+                'active_campaigns': 0,
                 'recent_activities': [],
                 'top_campaigns': [],
                 'state_stats': {},
                 'device_stats': {},
-                'daily_stats': {}
+                'daily_stats': {},
+                'previous_clicks': 0,
+                'previous_unique': 0,
+                'bounce_rate': 0,
+                'avg_time': 0
             }
-        finally:
-            conn.close()
 
     def record_click(self, short_code: str, **click_data):
         """Record click analytics"""
@@ -665,12 +670,12 @@ class Database:
                 click_data.get('user_agent'),
                 click_data.get('referrer'),
                 click_data.get('state'),
-                click_data.get('device_type'),
-                click_data.get('browser'),
-                click_data.get('os')
+                click_data.get('device_type', 'Unknown'),  # Default to Unknown
+                click_data.get('browser', 'Unknown'),      # Default to Unknown
+                click_data.get('os', 'Unknown')           # Default to Unknown
             )
             self.execute_query(query, params)
-            logger.info(f"Recorded click for {short_code}")
+            logger.info(f"Recorded click with device data for {short_code}")
             
         except Exception as e:
             logger.error(f"Error recording click: {str(e)}")
@@ -826,8 +831,9 @@ class Database:
                 return cursor.lastrowid
             else:
                 if fetch_one:
-                    return cursor.fetchone()
-                return cursor.fetchall()
+                    row = cursor.fetchone()
+                    return dict(row) if row else None
+                return [dict(row) for row in cursor.fetchall()]
             
         except Exception as e:
             logger.error(f"Database query error: {str(e)}")

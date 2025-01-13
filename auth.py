@@ -79,6 +79,20 @@ class Auth:
 
     def logout(self):
         """Log out the user"""
-        if 'user' in st.session_state:
-            logger.info(f"Logging out user: {st.session_state.user['username']}")
-            del st.session_state.user 
+        try:
+            if 'user' in st.session_state:
+                username = st.session_state.user['username']
+                logger.info(f"Logging out user: {username}")
+                
+                # Store theme before logout
+                current_theme = st.session_state.get('theme', 'light')
+                
+                # Clear all session state
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
+                    
+                # Restore theme
+                st.session_state.theme = current_theme
+                
+        except Exception as e:
+            logger.error(f"Error during logout: {str(e)}") 

@@ -46,10 +46,21 @@ st.set_page_config(
     }
 )
 
+# Add near the top of your app, after st.set_page_config
+st.markdown("""
+    <script>
+        window.addEventListener('message', function(e) {
+            if (e.data.type === 'client_info') {
+                window.client_detected_info = e.data;
+            }
+        });
+    </script>
+""", unsafe_allow_html=True)
+
 # At the start of your app, after st.set_page_config
 setup_page()
 
-BASE_URL = "https://shortlinksnandan.streamlit.app/"  # For local development
+BASE_URL = "http://localhost:8501/"  # For local development
 
 CAMPAIGN_TYPES = {
     "Social Media": "🔵",
@@ -993,20 +1004,67 @@ def capture_client_info():
     try:
         ctx = get_script_run_ctx()
         if ctx is not None:
-            # Get client info
+            # Basic client info without user agent
             client_info = {
                 'ip_address': ctx.session_id,  # Using session ID as proxy for IP
-                'user_agent': st.get_user_agent(),
-                'referrer': None,  # Streamlit doesn't provide referrer
-                'state': None,  # Could be determined from IP
-                'device_type': 'Desktop' if st.get_user_agent().is_desktop else 'Mobile',
-                'browser': st.get_user_agent().browser,
-                'os': st.get_user_agent().os
+                'user_agent': None,
+                'referrer': None,
+                'state': None,
+                'device_type': 'Unknown',  # Default values
+                'browser': 'Unknown',
+                'os': 'Unknown'
             }
+            
+            # Try to get user agent info if available
+            try:
+                import streamlit.components.v1 as components
+                # Inject JavaScript to get user agent
+                ua_html = """
+                    <script>
+                        var ua = navigator.userAgent;
+                        var device = 'Desktop';
+                        if (/mobile/i.test(ua)) device = 'Mobile';
+                        else if (/tablet/i.test(ua)) device = 'Tablet';
+                        
+                        var browser = 'Unknown';
+                        if (/firefox/i.test(ua)) browser = 'Firefox';
+                        else if (/chrome/i.test(ua)) browser = 'Chrome';
+                        else if (/safari/i.test(ua)) browser = 'Safari';
+                        else if (/edge/i.test(ua)) browser = 'Edge';
+                        
+                        var os = 'Unknown';
+                        if (/windows/i.test(ua)) os = 'Windows';
+                        else if (/macintosh/i.test(ua)) os = 'MacOS';
+                        else if (/linux/i.test(ua)) os = 'Linux';
+                        else if (/android/i.test(ua)) os = 'Android';
+                        else if (/ios/i.test(ua)) os = 'iOS';
+                        
+                        window.parent.postMessage({
+                            type: 'client_info',
+                            device: device,
+                            browser: browser,
+                            os: os,
+                            ua: ua
+                        }, '*');
+                    </script>
+                """
+                components.html(ua_html, height=0)
+                
+                # Update client info with detected values
+                if 'client_detected_info' in st.session_state:
+                    detected = st.session_state.client_detected_info
+                    client_info.update({
+                        'device_type': detected.get('device', 'Unknown'),
+                        'browser': detected.get('browser', 'Unknown'),
+                        'os': detected.get('os', 'Unknown'),
+                        'user_agent': detected.get('ua', None)
+                    })
+            except Exception as e:
+                logger.warning(f"Could not detect detailed client info: {str(e)}")
             
             # Store in session state
             st.session_state.client_info = client_info
-            logger.info("Client info captured successfully")
+            logger.info("Client info captured with basic data")
             
     except Exception as e:
         logger.error(f"Error capturing client info: {str(e)}")
@@ -1020,124 +1078,203 @@ def render_header(title: str):
     """, unsafe_allow_html=True)
 
 def render_dashboard():
-    """Render the main dashboard with consistent data"""
-    # Get comprehensive stats
+    """Render the main dashboard with enhanced details"""
+    try:
+        # Get comprehensive stats with defaults
+        stats = shortener.db.get_dashboard_stats()
+        
+        # Ensure all required stats exist with defaults
+        stats_defaults = {
+            'total_clicks': 0,
+            'unique_visitors': 0,
+            'total_campaigns': 0,
+            'active_campaigns': 0,
+            'previous_clicks': 0,
+            'previous_unique': 0,
+            'previous_active': 0,
+            'previous_conversion': 0,
+            'bounce_rate': 0,
+            'avg_time': 0,
+            'top_campaigns': [],
+            'recent_activities': [],
+            'state_stats': {},
+            'device_stats': {},
+            'browser_stats': {},
+            'daily_stats': {},
+            'hourly_stats': {}
+        }
+        
+        # Update stats with defaults
+        for key, default_value in stats_defaults.items():
+            if key not in stats or stats[key] is None:
+                stats[key] = default_value
+
+        # Quick Actions Bar
+        # st.markdown("""
+        #     <div class="stat-card" style="margin-bottom: 2rem;">
+        #         <h3 style="margin-bottom: 1rem; color: #0f172a;">🚀 Quick Actions</h3>
+        #     </div>
+        # """, unsafe_allow_html=True)
+        
+        # Quick Action buttons
+        quick_action_cols = st.columns(4)
+        with quick_action_cols[0]:
+            st.markdown("""
+                <div class="metric-card" style="cursor: pointer; text-align: center;">
+                    <div style="font-size: 1.5rem;">➕</div>
+                    <div style="font-weight: 500; color: #0891b2;">New Campaign</div>
+                </div>
+            """, unsafe_allow_html=True)
+            if st.button("New Campaign", key="new_campaign", use_container_width=True):
+                st.session_state.page = "create_campaign"
+                
+        with quick_action_cols[1]:
+            st.markdown("""
+                <div class="metric-card" style="cursor: pointer; text-align: center;">
+                    <div style="font-size: 1.5rem;">📊</div>
+                    <div style="font-weight: 500; color: #0891b2;">Export Report</div>
+                </div>
+            """, unsafe_allow_html=True)
+            if st.button("Export Report", key="export_report", use_container_width=True):
+                export_analytics()
+                
+        with quick_action_cols[2]:
+            st.markdown("""
+                <div class="metric-card" style="cursor: pointer; text-align: center;">
+                    <div style="font-size: 1.5rem;">🔄</div>
+                    <div style="font-weight: 500; color: #0891b2;">Refresh Data</div>
+                </div>
+            """, unsafe_allow_html=True)
+            if st.button("Refresh Data", key="refresh_data", use_container_width=True):
+                st.rerun()
+                
+        with quick_action_cols[3]:
+            st.markdown("""
+                <div class="metric-card" style="cursor: pointer; text-align: center;">
+                    <div style="font-size: 1.5rem;">⚡</div>
+                    <div style="font-weight: 500; color: #0891b2;">Quick Link</div>
+                </div>
+            """, unsafe_allow_html=True)
+            if st.button("Quick Link", key="quick_link", use_container_width=True):
+                show_quick_link_creator()
+        
+        # Enhanced Metrics Display
+        metrics_cols = st.columns(4)
+        with metrics_cols[0]:
+            st.metric(
+                "Total Clicks",
+                f"{stats['total_clicks']:,}",
+                f"{stats['total_clicks'] - stats['previous_clicks']:+,}",
+                help="Total number of clicks across all campaigns"
+            )
+        with metrics_cols[1]:
+            st.metric(
+                "Unique Visitors",
+                f"{stats['unique_visitors']:,}",
+                f"{(stats['unique_visitors'] / max(1, stats['total_clicks']) * 100):.1f}% Rate",
+                help="Number of unique visitors"
+            )
+        with metrics_cols[2]:
+            st.metric(
+                "Active Campaigns",
+                stats['active_campaigns'],
+                f"{stats['active_campaigns'] - stats['previous_active']:+,}",
+                help="Currently active campaigns"
+            )
+        with metrics_cols[3]:
+            conversion_rate = (stats['unique_visitors'] / max(1, stats['total_clicks'])) * 100
+            st.metric(
+                "Conversion Rate",
+                f"{conversion_rate:.1f}%",
+                f"{conversion_rate - stats['previous_conversion']:+.1f}%",
+                help="Visitor to click conversion rate"
+            )
+
+        # Add Device Distribution Chart
+        st.markdown("### 📱 Device Analytics")
+        device_cols = st.columns([1, 1])
+        
+        with device_cols[0]:
+            if stats.get('device_stats'):
+                device_df = pd.DataFrame(list(stats['device_stats'].items()), 
+                                       columns=['Device', 'Count'])
+                fig = px.pie(
+                    device_df,
+                    values='Count',
+                    names='Device',
+                    title='Device Distribution',
+                    color_discrete_sequence=['#0891b2', '#0ea5e9', '#38bdf8', '#7dd3fc'],
+                    hole=0.4
+                )
+                fig.update_traces(textposition='outside', textinfo='percent+label')
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No device data available yet")
+        
+        with device_cols[1]:
+            if stats.get('browser_stats'):
+                browser_df = pd.DataFrame(list(stats['browser_stats'].items()),
+                                        columns=['Browser', 'Count'])
+                fig = px.pie(
+                    browser_df,
+                    values='Count',
+                    names='Browser',
+                    title='Browser Distribution',
+                    color_discrete_sequence=['#0891b2', '#0ea5e9', '#38bdf8', '#7dd3fc'],
+                    hole=0.4
+                )
+                fig.update_traces(textposition='outside', textinfo='percent+label')
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No browser data available yet")
+
+        # Recent Activity
+        st.markdown("### 📊 Recent Activity")
+        if stats['recent_activities']:
+            for activity in stats['recent_activities']:
+                render_activity_item(activity)
+        else:
+            st.info("No recent activity to show")
+
+    except Exception as e:
+        logger.error(f"Error rendering dashboard: {str(e)}")
+        st.error("Error loading dashboard data. Please try refreshing the page.")
+
+def export_analytics():
+    """Export analytics data to CSV"""
     stats = shortener.db.get_dashboard_stats()
     
-    # Show empty state if no campaigns exist
-    if stats['total_campaigns'] is None:
-        st.info("👋 Welcome! Create your first campaign to see analytics here.")
-        return
+    # Create DataFrame for export
+    export_data = pd.DataFrame(stats['top_campaigns'])
     
-    # Top Metrics
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Clicks", stats['total_clicks'])
-    with col2:
-        st.metric("Unique Visitors", stats['unique_visitors'])
-    with col3:
-        st.metric("Active Campaigns", stats['active_campaigns'])
-    with col4:
-        engagement_rate = (stats['unique_visitors'] / max(1, stats['total_clicks'])) * 100 if stats['total_clicks'] else 0
-        st.metric("Engagement Rate", f"{engagement_rate:.1f}%")
+    # Add timestamp to filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"campaign_analytics_{timestamp}.csv"
+    
+    # Convert to CSV
+    csv = export_data.to_csv(index=False)
+    
+    # Create download button
+    st.download_button(
+        label="📥 Download CSV",
+        data=csv,
+        file_name=filename,
+        mime="text/csv"
+    )
 
-    # Charts
-    if stats['daily_stats'] or stats['device_stats'] or stats['state_stats']:
-        col1, col2 = st.columns(2)
-        with col1:
-            if stats['daily_stats']:
-                df = pd.DataFrame(list(stats['daily_stats'].items()), columns=['Date', 'Clicks'])
-                fig = px.line(df, x='Date', y='Clicks', title='Daily Click Trends')
-                st.plotly_chart(fig, use_container_width=True)
-
-        with col2:
-            if stats['device_stats']:
-                df = pd.DataFrame(list(stats['device_stats'].items()), columns=['Device', 'Count'])
-                fig = px.pie(df, values='Count', names='Device', title='Device Distribution')
-                st.plotly_chart(fig, use_container_width=True)
+def show_quick_link_creator():
+    """Show quick link creation form"""
+    with st.form("quick_link"):
+        url = st.text_input("Enter URL")
+        campaign_name = st.text_input("Campaign Name (Optional)")
+        submitted = st.form_submit_button("Create Link")
         
-        # Create two columns for Geographic Distribution and Top Campaigns
-        geo_col, top_campaigns_col = st.columns(2)
-        
-        # Geographic Distribution in left column
-        with geo_col:
-            if stats['state_stats']:
-                st.markdown("### 📍 Geographic Distribution")
-                state_df = pd.DataFrame(list(stats['state_stats'].items()), columns=['State', 'Visits'])
-                state_df = state_df.sort_values('Visits', ascending=True)
-                
-                fig = px.bar(
-                    state_df,
-                    x='Visits',
-                    y='State',
-                    orientation='h',
-                    title='Visits by State',
-                    color='Visits',
-                    color_continuous_scale='Viridis'
-                )
-                
-                # Update layout for better readability
-                fig.update_layout(
-                    height=400,  # Fixed height to match top campaigns table
-                    xaxis_title="Number of Visits",
-                    yaxis_title="State",
-                    showlegend=False,
-                    margin=dict(l=0, r=0, t=30, b=0)  # Adjust margins
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-
-        # Top Campaigns in right column
-        with top_campaigns_col:
-            st.markdown("### 🏆 Top Performing Campaigns")
-            if stats['top_campaigns']:
-                df = pd.DataFrame(stats['top_campaigns'])
-                
-                # Format the dataframe
-                if 'last_click' in df.columns:
-                    df['last_click'] = pd.to_datetime(df['last_click']).dt.strftime('%Y-%m-%d %H:%M')
-                
-                # Configure columns
-                st.dataframe(
-                    df,
-                    column_config={
-                        "campaign_name": st.column_config.TextColumn("Campaign"),
-                        "clicks": st.column_config.NumberColumn("Clicks", format="%d"),
-                        "unique_visitors": st.column_config.NumberColumn("Unique", format="%d"),
-                        "campaign_type": st.column_config.TextColumn("Type"),
-                        "last_click": st.column_config.TextColumn("Last Click")
-                    },
-                    use_container_width=True,
-                    hide_index=True,
-                    height=400  # Match height with geographic chart
-                )
-            else:
-                st.info("No campaign data available yet")
-
-    # Recent Activity (Limited to 5)
-    st.markdown("### 📊 Recent Activity")
-    
-    # Show only 5 most recent activities
-    recent_activities = stats['recent_activities'][:5]
-    
-    if recent_activities:
-        for activity in recent_activities:
-            render_activity_item(activity)
-            
-        # Add "View All" button
-        if len(stats['recent_activities']) > 5:
-            if st.button("View All Activities"):
-                st.session_state.show_all_activities = True
-                
-        # Show all activities in a modal/expander if requested
-        if st.session_state.get('show_all_activities', False):
-            with st.expander("All Activities", expanded=True):
-                for activity in stats['recent_activities'][5:]:
-                    render_activity_item(activity)
-                if st.button("Show Less"):
-                    st.session_state.show_all_activities = False
-    else:
-        st.info("No recent activity to show")
+        if submitted and url:
+            short_code = shortener.create_short_url(
+                url=url,
+                campaign_name=campaign_name or f"Quick_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            )
+            st.success(f"Short URL created: {BASE_URL}?r={short_code}")
 
 def clear_all_cache():
     """Clear all Streamlit cache"""
@@ -1566,6 +1703,7 @@ def create_campaign():
         "total_clicks": st.column_config.NumberColumn(
             "Clicks",
             width="small",
+            help="Total number of clicks",
             format="%d"
         ),
         "created_at": st.column_config.DatetimeColumn(
@@ -1722,55 +1860,46 @@ def render_settings():
             st.success("Settings saved successfully!")
 
 def render_activity_item(activity: dict):
-    """Render a single activity item with styling"""
-    
-    # Format timestamp
+    """Render a single activity item with enhanced styling"""
     try:
-        timestamp = datetime.strptime(activity['clicked_at'], '%Y-%m-%d %H:%M:%S')
-        formatted_time = timestamp.strftime('%b %d, %Y %I:%M %p')
-    except:
-        formatted_time = activity['clicked_at']
-    
-    # Get emoji for campaign type
-    campaign_emojis = {
-        "Social Media": "🔵",
-        "Email": "📧",
-        "Paid Ads": "💰",
-        "Blog": "📝",
-        "Affiliate": "🤝",
-        "Other": "🔗"
-    }
-    campaign_emoji = campaign_emojis.get(activity.get('campaign_type'), '🔗')
-    
-    # Get emoji for device type
-    device_emojis = {
-        "Desktop": "💻",
-        "Mobile": "📱",
-        "Tablet": "📱",
-        "Unknown": "❓"
-    }
-    device_emoji = device_emojis.get(activity.get('device_type'), '❓')
-    
-    st.markdown(f"""
-        <div style='
-            background-color: white;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 0.5rem;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        '>
-            <div style='display: flex; align-items: center; margin-bottom: 0.5rem;'>
-                <span style='font-size: 1.25rem; margin-right: 0.5rem;'>{campaign_emoji}</span>
-                <span style='font-weight: 600; color: #1a202c;'>{activity['campaign_name']}</span>
+        # Format timestamp
+        try:
+            timestamp = datetime.strptime(activity['clicked_at'], '%Y-%m-%d %H:%M:%S')
+            formatted_time = timestamp.strftime('%b %d, %Y %I:%M %p')
+        except:
+            formatted_time = str(activity.get('clicked_at', 'Unknown'))
+        
+        campaign_emoji = CAMPAIGN_TYPES.get(activity.get('campaign_type', 'Other'), '🔗')
+        device_emoji = {
+            "Desktop": "💻",
+            "Mobile": "📱",
+            "Tablet": "📱",
+            "Unknown": "❓"
+        }.get(activity.get('device_type', 'Unknown'), '❓')
+        
+        st.markdown(f"""
+            <div class="activity-item">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 1.5rem;">{campaign_emoji}</span>
+                        <div>
+                            <div style="font-weight: 600; color: #0891b2;">
+                                {activity.get('campaign_name', 'Unknown Campaign')}
+                            </div>
+                            <div style="display: flex; gap: 1rem; color: #64748b; font-size: 0.875rem;">
+                                <span>{device_emoji} {activity.get('device_type', 'Unknown')}</span>
+                                <span>📍 {activity.get('state', 'Unknown')}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="color: #94a3b8; font-size: 0.875rem;">
+                        {formatted_time}
+                    </div>
+                </div>
             </div>
-            <div style='display: flex; gap: 1rem; color: #64748b; font-size: 0.875rem;'>
-                <span>{device_emoji} {activity['device_type']}</span>
-                <span>📍 {activity.get('state', 'Unknown')}</span>
-                <span>🕒 {formatted_time}</span>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+    except Exception as e:
+        logger.error(f"Error rendering activity item: {str(e)}")
 
 def render_login_page():
     """Render the login page"""

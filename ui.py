@@ -75,8 +75,19 @@ class UI:
         """, unsafe_allow_html=True)
 
     def render_metrics(self, metrics: dict):
-        """Render dashboard metrics"""
+        """Render dashboard metrics with enhanced styling"""
         cols = st.columns(len(metrics))
+        
         for col, (label, value) in zip(cols, metrics.items()):
             with col:
-                st.metric(label, value)
+                st.markdown(f"""
+                    <div class="metric-card">
+                        <div style="color: #64748b; font-size: 0.875rem;">
+                            {label}
+                        </div>
+                        <div class="value">
+                            {value}
+                        </div>
+                        <div class="metric-footer" style="height: 4px; background: linear-gradient(90deg, #0891b2, #0ea5e9);"></div>
+                    </div>
+                """, unsafe_allow_html=True)
