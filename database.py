@@ -650,78 +650,73 @@ class Database:
         finally:
             conn.close()
 
-    def record_click(self, short_code: str, **kwargs) -> bool:
-        """Record a click for a short URL"""
-        conn = self.get_connection()
-        c = conn.cursor()
+    def record_click(self, short_code: str, **click_data):
+        """Record click analytics"""
         try:
-            # First update URL stats
-            c.execute('''
-                UPDATE urls 
-                SET total_clicks = total_clicks + 1,
-                    last_clicked = datetime('now')
-                WHERE short_code = ?
-            ''', (short_code,))
-            
-            # Then insert click data
-            c.execute('''
+            query = """
                 INSERT INTO analytics (
                     short_code, clicked_at, ip_address, user_agent,
-                    referrer, state, device_type, browser, os,
-                    time_on_page
-                ) VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
+                    referrer, state, device_type, browser, os
+                ) VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?)
+            """
+            params = (
                 short_code,
-                kwargs.get('ip_address'),
-                kwargs.get('user_agent'),
-                kwargs.get('referrer'),
-                kwargs.get('state'),
-                kwargs.get('device_type'),
-                kwargs.get('browser'),
-                kwargs.get('os'),
-                kwargs.get('time_on_page', 0)  # Default to 0 if not provided
-            ))
-            
-            conn.commit()
-            logger.info(f"Click recorded successfully for {short_code}")
-            return True
+                click_data.get('ip_address'),
+                click_data.get('user_agent'),
+                click_data.get('referrer'),
+                click_data.get('state'),
+                click_data.get('device_type'),
+                click_data.get('browser'),
+                click_data.get('os')
+            )
+            self.execute_query(query, params)
+            logger.info(f"Recorded click for {short_code}")
             
         except Exception as e:
             logger.error(f"Error recording click: {str(e)}")
-            conn.rollback()
-            return False
+
+    def update_url_stats(self, short_code: str):
+        """Update URL statistics after click"""
+        try:
+            query = """
+                UPDATE urls 
+                SET total_clicks = total_clicks + 1,
+                    last_clicked = CURRENT_TIMESTAMP
+                WHERE short_code = ?
+            """
+            self.execute_query(query, (short_code,))
+            logger.info(f"Updated stats for {short_code}")
             
-        finally:
-            conn.close()
+        except Exception as e:
+            logger.error(f"Error updating URL stats: {str(e)}")
 
     def handle_redirect(self, short_code: str) -> Optional[str]:
-        """Handle URL redirect and record click analytics"""
+        """Handle URL redirect and record click data"""
         try:
             # Get URL info
             url_info = self.get_url_info(short_code)
+            if not url_info:
+                return None
+
+            # Get client info from Streamlit session state
+            client_info = st.session_state.get('client_info', {})
             
-            if url_info and url_info.get('original_url'):
-                # Record the click first
-                click_recorded = self.record_click(
-                    short_code=short_code,
-                    ip_address=st.session_state.get('client_ip', '127.0.0.1'),
-                    user_agent=st.session_state.get('user_agent', 'Unknown'),
-                    referrer=st.session_state.get('referrer', 'Direct'),
-                    state=st.session_state.get('state', 'Unknown'),
-                    device_type=st.session_state.get('device_type', 'Unknown'),
-                    browser=st.session_state.get('browser', 'Unknown'),
-                    os=st.session_state.get('os', 'Unknown')
-                )
-                
-                if click_recorded:
-                    logger.info(f"Click recorded for {short_code}")
-                    # Force a cache clear to update stats
-                    st.cache_data.clear()
-                    return url_info['original_url']
-                else:
-                    logger.error(f"Failed to record click for {short_code}")
-                    
-            return None
+            # Record click with analytics
+            self.record_click(
+                short_code=short_code,
+                ip_address=client_info.get('ip_address'),
+                user_agent=client_info.get('user_agent'),
+                referrer=client_info.get('referrer'),
+                state=client_info.get('state'),
+                device_type=client_info.get('device_type'),
+                browser=client_info.get('browser'),
+                os=client_info.get('os')
+            )
+
+            # Update URL stats
+            self.update_url_stats(short_code)
+            
+            return url_info['original_url']
             
         except Exception as e:
             logger.error(f"Error handling redirect: {str(e)}")

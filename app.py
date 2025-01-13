@@ -49,7 +49,7 @@ st.set_page_config(
 # At the start of your app, after st.set_page_config
 setup_page()
 
-BASE_URL = "https://shortlinksnandan.streamlit.app/"  # For local development
+BASE_URL = "http://localhost:8501/"  # For local development
 
 CAMPAIGN_TYPES = {
     "Social Media": "🔵",
@@ -991,20 +991,22 @@ def auto_collapse_sidebar():
 def capture_client_info():
     """Capture client information for analytics"""
     try:
-        if 'client_info' not in st.session_state:
-            st.session_state.client_info = {
-                'client_ip': '127.0.0.1',
-                'user_agent': st.get_user_agent() if hasattr(st, 'get_user_agent') else 'Unknown',
-                'referrer': 'Direct',
-                'state': 'Unknown',
-                'device_type': 'Unknown',
-                'browser': 'Unknown',
-                'os': 'Unknown'
+        ctx = get_script_run_ctx()
+        if ctx is not None:
+            # Get client info
+            client_info = {
+                'ip_address': ctx.session_id,  # Using session ID as proxy for IP
+                'user_agent': st.get_user_agent(),
+                'referrer': None,  # Streamlit doesn't provide referrer
+                'state': None,  # Could be determined from IP
+                'device_type': 'Desktop' if st.get_user_agent().is_desktop else 'Mobile',
+                'browser': st.get_user_agent().browser,
+                'os': st.get_user_agent().os
             }
             
-        # Update session state
-        for key, value in st.session_state.client_info.items():
-            st.session_state[key] = value
+            # Store in session state
+            st.session_state.client_info = client_info
+            logger.info("Client info captured successfully")
             
     except Exception as e:
         logger.error(f"Error capturing client info: {str(e)}")
@@ -1163,6 +1165,35 @@ def main():
             
         if 'auth' not in st.session_state:
             st.session_state.auth = Auth(st.session_state.db)
+        
+        # Check for redirect first
+        params = st.query_params
+        if 'r' in params:
+            short_code = params['r']
+            target_url = st.session_state.db.handle_redirect(short_code)
+            
+            if target_url:
+                # Show loading message
+                st.info(f"Redirecting to {target_url}...")
+                
+                # Use JavaScript for immediate redirect
+                html_code = f"""
+                    <html>
+                        <head>
+                            <script>
+                                window.location.href = "{target_url}";
+                            </script>
+                        </head>
+                        <body>
+                            <p>If you are not redirected automatically, <a href="{target_url}">click here</a>.</p>
+                        </body>
+                    </html>
+                """
+                st.components.v1.html(html_code, height=100)
+                return
+            else:
+                st.error("Invalid short URL")
+                return
             
         # Check authentication first
         if not st.session_state.auth.check_authentication():
