@@ -22,6 +22,9 @@ from PIL import Image
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 import os
 import time
+from auth import Auth
+from styles import get_styles
+from ui_config import setup_page
 
 # Setup logging
 logging.basicConfig(
@@ -37,26 +40,14 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
     menu_items={
-        'Get Help': 'https://github.com/DataDudeAI/shortlinks',
-        'Report a bug': "https://github.com/DataDudeAI/shortlinks/issues",
+        'Get Help': 'https://github.com/yourusername/shortlinks',
+        'Report a bug': "https://github.com/yourusername/shortlinks/issues",
         'About': "# Campaign Dashboard\nA powerful URL shortener and campaign management tool."
     }
 )
 
 # At the start of your app, after st.set_page_config
-if 'theme' not in st.session_state:
-    st.session_state.theme = 'dark'
-
-# Load theme-aware styles
-st.markdown(load_ui_styles(), unsafe_allow_html=True)
-
-# Apply theme-specific settings
-if st.session_state.theme == 'dark':
-    st.markdown("""
-        <script>
-            document.querySelector('.stApp').classList.add('dark');
-        </script>
-    """, unsafe_allow_html=True)
+setup_page()
 
 BASE_URL = "https://shortlinksnandan.streamlit.app/"  # For local development
 
@@ -130,7 +121,8 @@ class URLShortener:
     def __init__(self):
         """Initialize URL shortener with database connection"""
         try:
-            self.db = Database()
+            # Use existing database instance instead of creating new one
+            self.db = st.session_state.db
             self.organization = Organization(self.db)
             logger.info("URLShortener initialized successfully")
         except Exception as e:
@@ -1165,70 +1157,66 @@ def clear_all_cache():
 
 def main():
     try:
-        # Initialize global state
-        if 'initialized' not in st.session_state:
-            st.session_state.initialized = True
-            st.session_state.shortener = None
-        
-        # Check for redirect first
-        params = st.query_params
-        if 'r' in params:
-            short_code = params['r']
+        # Initialize database only once
+        if 'db' not in st.session_state:
+            st.session_state.db = Database()
             
-            # Initialize shortener if needed
-            if not st.session_state.shortener:
-                st.session_state.shortener = URLShortener()
+        if 'auth' not in st.session_state:
+            st.session_state.auth = Auth(st.session_state.db)
             
-            # Get URL info and record click
-            target_url = st.session_state.shortener.db.handle_redirect(short_code)
+        if 'shortener' not in st.session_state:
+            st.session_state.shortener = URLShortener()  # Will use existing db instance
             
-            if target_url:
-                # Show loading message
-                st.info(f"Redirecting to {target_url}...")
-                
-                # Use JavaScript for immediate redirect
-                html_code = f"""
-                    <html>
-                        <head>
-                            <script>
-                                window.location.href = "{target_url}";
-                            </script>
-                        </head>
-                        <body>
-                            <p>If you are not redirected automatically, <a href="{target_url}">click here</a>.</p>
-                        </body>
-                    </html>
-                """
-                st.components.v1.html(html_code, height=100)
-                return
-            else:
-                st.error("Invalid short URL")
-                return
+        # Check authentication
+        if not st.session_state.auth.check_authentication():
+            render_login_page()
+            return
 
-        # Initialize components
-        if not st.session_state.shortener:
-            st.session_state.shortener = URLShortener()
-        
+        # Use existing shortener instance
         global shortener
         shortener = st.session_state.shortener
         
-        # Rest of your main function...
         auto_collapse_sidebar()
         capture_client_info()
         
         # Sidebar Navigation
         with st.sidebar:
+            # Update logo to use VBG's branding
             st.image(
-                "https://via.placeholder.com/150x50?text=Logo",
+                "https://virtualbattleground.in/images/VBG-Logo.png",  # VBG's official logo
                 use_container_width=True
             )
             
+            # Show user info with VBG styling
+            st.markdown(f"""
+                <div class="user-info vbg-branded">
+                    <p>
+                        <span>👤</span>
+                        <span class="user-role">{st.session_state.user['username']}</span>
+                    </p>
+                    <p>
+                        <span>🏢</span>
+                        <span class="org-name">VBG Game Studios</span>
+                    </p>
+                    <p class="domain-info">
+                        <span>🌐</span>
+                        <span>virtualbattleground.in</span>
+                    </p>
+                </div>
+            """, unsafe_allow_html=True)
+            
             selected_page = st.radio(
                 "Navigation",
-                ["🏠 Dashboard", "🔗 Create Campaign", "📈 Analytics", "⚙️ Settings"],
-                label_visibility="collapsed"
+                ["🏠 Dashboard", "🔗 Create Campaign", "📈 Analytics", 
+                 "🏢 Organization" if st.session_state.user['role'] == 'admin' else None,
+                 "⚙️ Settings"],
+                format_func=lambda x: x if x else "",  # Hide None option
             )
-        
+            
+            if st.button("Logout"):
+                st.session_state.auth.logout()
+                st.rerun()
+
         # Page routing
         if selected_page == "🏠 Dashboard":
             render_header("Campaign Dashboard")
@@ -1239,6 +1227,9 @@ def main():
         elif selected_page == "📈 Analytics":
             render_header("Analytics Overview")
             shortener.render_analytics_dashboard()
+        elif selected_page == "🏢 Organization":
+            organization = Organization(st.session_state.db)
+            organization.render_organization_settings()
         elif selected_page == "⚙️ Settings":
             render_header("Settings")
             render_settings()
@@ -1748,6 +1739,48 @@ def render_activity_item(activity: dict):
             </div>
         </div>
     """, unsafe_allow_html=True)
+
+def render_login_page():
+    """Render the login page"""
+    st.markdown("""
+        <div class="login-container">
+            <div class="login-header">
+                <h1>🎯 Campaign Dashboard</h1>
+                <p>Sign in to your account</p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Sign In", use_container_width=True)
+
+            if submitted:
+                if username and password:
+                    user_data = st.session_state.auth.login(username, password)
+                    if user_data:
+                        # Store user data in session state
+                        st.session_state.user = user_data
+                        st.success("Login successful!")
+                        time.sleep(1)  # Give time for success message
+                        st.rerun()
+                    else:
+                        st.error("Invalid username or password")
+                        logger.warning(f"Failed login attempt for user: {username}")
+                else:
+                    st.error("Please enter both username and password")
+
+        # Show demo credentials
+        st.markdown("""
+            <div style="text-align: center; margin-top: 2rem;">
+                <p style="color: #666;">Demo Credentials:</p>
+                <p>Admin: admin / admin123</p>
+                <p>User: nandan / nandan123</p>
+            </div>
+        """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main() 

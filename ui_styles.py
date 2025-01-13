@@ -1,297 +1,187 @@
 import streamlit as st
 
 def load_ui_styles():
-    theme = st.session_state.get('theme', 'light')
-    
     return """
     <style>
-        /* Base Theme Colors */
-        :root {
-            --deep-green-start: #065F46;
-            --deep-green-end: #047857;
-            --deep-green-light: #059669;
-            --deep-green-accent: #10B981;
-            --deep-green-glow: rgba(6, 95, 70, 0.25);
-            --sidebar-bg: rgb(13, 28, 18);
-            --sidebar-hover: rgba(16, 185, 129, 0.1);
-            
-            /* Card Colors */
-            --card-bg: linear-gradient(145deg, rgba(6, 95, 70, 0.08), rgba(16, 185, 129, 0.05));
-            --card-border: rgba(16, 185, 129, 0.2);
-            --card-hover-bg: linear-gradient(145deg, rgba(6, 95, 70, 0.12), rgba(16, 185, 129, 0.08));
-            --card-hover-border: rgba(16, 185, 129, 0.5);
-            --card-shadow: 0 4px 20px rgba(6, 95, 70, 0.15);
-            --card-hover-shadow: 0 8px 30px rgba(6, 95, 70, 0.25);
-            
-            /* Text Colors */
-            --text-primary: #F3EDED;
-            --text-secondary: #E2E8F0;
-            --background-dark: #101414;
+        /* Dashboard-specific components */
+        .dashboard-card {
+            transition: transform 0.2s;
+            cursor: pointer;
         }
-
-        /* Global Styles */
-        .stApp {
-            background: var(--background-dark);
-            color: var(--text-primary);
-        }
-
-        /* Enhanced Metric Cards */
-        [data-testid="stMetric"] {
-            background: var(--card-bg);
-            padding: 2rem !important;
-            border-radius: 1.2rem !important;
-            border: 1px solid var(--card-border) !important;
-            box-shadow: var(--card-shadow);
-            position: relative;
-            overflow: hidden;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            backdrop-filter: blur(10px);
-        }
-
-        [data-testid="stMetric"]::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, var(--deep-green-accent), var(--deep-green-light));
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        [data-testid="stMetric"]:hover {
-            transform: translateY(-5px) scale(1.02);
-            border-color: var(--card-hover-border) !important;
-            background: var(--card-hover-bg);
-            box-shadow: var(--card-hover-shadow);
-        }
-
-        [data-testid="stMetric"]:hover::before {
-            opacity: 1;
-        }
-
-        /* Metric Text Styles */
-        [data-testid="stMetricLabel"] > div {
-            color: var(--deep-green-accent) !important;
-            font-size: 1.1rem !important;
-            font-weight: 600 !important;
-            letter-spacing: 0.02em;
-            text-transform: uppercase;
-        }
-
-        [data-testid="stMetricValue"] {
-            font-size: 2.8rem !important;
-            font-weight: 800 !important;
-            background: linear-gradient(90deg, var(--deep-green-light), var(--deep-green-accent));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            letter-spacing: -0.02em;
-        }
-
-        [data-testid="stMetricDelta"] {
-            background: linear-gradient(90deg, #059669, #10B981);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-weight: 700 !important;
-            font-size: 1.1rem !important;
-            padding: 0.3rem 0.8rem;
-            border-radius: 1rem;
-            border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-
-        /* Enhanced Sidebar */
-        [data-testid="stSidebar"] {
-            background: var(--sidebar-bg) !important;
-            border-right: 1px solid rgba(16, 185, 129, 0.1);
-        }
-
-        /* Sidebar Navigation */
-        [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
-            padding: 1.5rem 1rem;
-        }
-
-        [data-testid="stSidebar"] button {
-            width: 100%;
-            padding: 0.75rem 1rem !important;
-            border-radius: 0.8rem !important;
-            background: transparent !important;
-            color: #E2E8F0 !important;
-            border: 1px solid transparent !important;
-            transition: all 0.3s ease !important;
-        }
-
-        [data-testid="stSidebar"] button:hover {
-            background: var(--sidebar-hover) !important;
-            border-color: rgba(16, 185, 129, 0.2) !important;
-            transform: translateX(5px);
-        }
-
-        /* Chart Container */
-        .js-plotly-plot {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border) !important;
-            border-radius: 1.2rem !important;
-            padding: 1.5rem !important;
-            box-shadow: var(--card-shadow);
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .js-plotly-plot:hover {
-            transform: translateY(-3px);
-            border-color: var(--card-hover-border) !important;
-            box-shadow: var(--card-hover-shadow);
-        }
-
-        /* Tables */
-        .stDataFrame {
-            border: 1px solid var(--card-border) !important;
-            border-radius: 1rem !important;
-            overflow: hidden !important;
-        }
-
-        .stDataFrame thead tr th {
-            background: var(--card-bg) !important;
-            color: var(--text-primary) !important;
-        }
-
-        .stDataFrame tbody tr:hover td {
-            background: var(--card-hover-bg) !important;
-        }
-
-        /* Forms and Inputs */
-        .stTextInput input,
-        .stSelectbox select,
-        .stDateInput input {
-            background: var(--card-bg) !important;
-            border-color: var(--card-border) !important;
-            color: var(--text-primary) !important;
-            border-radius: 0.8rem !important;
-        }
-
-        .stTextInput input:focus,
-        .stSelectbox select:focus,
-        .stDateInput input:focus {
-            border-color: var(--deep-green-accent) !important;
-            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2) !important;
-        }
-
-        /* Buttons */
-        .stButton > button {
-            background: var(--deep-green-start) !important;
-            color: white !important;
-            border: none !important;
-            padding: 0.75rem 1.5rem !important;
-            border-radius: 0.8rem !important;
-            font-weight: 600 !important;
-            transition: all 0.3s ease !important;
-        }
-
-        .stButton > button:hover {
-            background: var(--deep-green-end) !important;
+        
+        .dashboard-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(6, 95, 70, 0.3);
         }
-
-        /* Recent Campaign Styles */
-        .recent-activity {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 1.2rem;
-            padding: 1.5rem;
-            margin: 1rem 0;
-            transition: all 0.3s ease;
+        
+        /* Analytics components */
+        .analytics-chart {
+            border-radius: 8px;
+            padding: 1rem;
+            background: var(--background-color);
+            box-shadow: 0 2px 4px var(--shadow-color);
         }
-
-        .activity-item {
+        
+        /* Campaign components */
+        .campaign-list {
+            max-height: 600px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+        }
+        
+        .campaign-item {
             display: flex;
             align-items: center;
             padding: 1rem;
-            margin: 0.5rem 0;
-            border-radius: 0.8rem;
-            background: rgba(6, 95, 70, 0.05);
-            border: 1px solid rgba(16, 185, 129, 0.1);
-            transition: all 0.3s ease;
+            border-bottom: 1px solid var(--border-color);
+            transition: background-color 0.2s;
         }
-
-        .activity-item:hover {
-            transform: translateX(5px);
-            background: rgba(6, 95, 70, 0.1);
-            border-color: var(--deep-green-accent);
-            box-shadow: 0 4px 12px rgba(6, 95, 70, 0.1);
+        
+        .campaign-item:hover {
+            background-color: rgba(0,0,0,0.02);
         }
-
-        .activity-icon {
-            background: var(--deep-green-start);
+        
+        /* Navigation components */
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            border-radius: 0.375rem;
+            transition: background-color 0.2s;
+            cursor: pointer;
+        }
+        
+        .nav-item:hover {
+            background-color: rgba(0,0,0,0.05);
+        }
+        
+        .nav-item.active {
+            background-color: var(--primary-color);
             color: white;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
+        }
+        
+        /* Modal components */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-right: 1rem;
-            font-size: 1.2rem;
+            z-index: 1000;
         }
-
-        .activity-content {
-            flex: 1;
+        
+        .modal-content {
+            background: var(--background-color);
+            padding: 2rem;
+            border-radius: 0.5rem;
+            max-width: 500px;
+            width: 90%;
+            position: relative;
         }
-
-        .activity-title {
-            color: var(--text-primary);
-            font-weight: 600;
-            font-size: 1rem;
-            margin-bottom: 0.25rem;
+        
+        /* Tooltip components */
+        .tooltip {
+            position: relative;
+            display: inline-block;
         }
-
-        .activity-meta {
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
+        
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            background-color: #333;
+            color: white;
+            text-align: center;
+            padding: 5px;
+            border-radius: 6px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
         }
-
-        .activity-time {
-            color: var(--deep-green-accent);
-            font-weight: 500;
+        
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
         }
-
-        .activity-state {
-            background: rgba(16, 185, 129, 0.1);
-            color: var(--deep-green-accent);
-            padding: 0.25rem 0.75rem;
-            border-radius: 1rem;
-            font-size: 0.875rem;
-            font-weight: 500;
+        
+        /* Loading animations */
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
         }
-
-        /* Activity List Animation */
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateX(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
-
-        .activity-item {
-            animation: slideIn 0.3s ease-out forwards;
+        
+        /* Form animations */
+        .form-input:focus {
+            transform: scale(1.02);
+            transition: transform 0.2s;
         }
-
-        .activity-item:nth-child(2) {
-            animation-delay: 0.1s;
+        
+        /* Success/Error animations */
+        .alert {
+            padding: 1rem;
+            border-radius: 0.375rem;
+            margin-bottom: 1rem;
+            opacity: 0;
+            animation: fadeIn 0.3s forwards;
         }
-
-        .activity-item:nth-child(3) {
-            animation-delay: 0.2s;
+        
+        .alert-success {
+            background-color: #10B981;
+            color: white;
+        }
+        
+        .alert-error {
+            background-color: #EF4444;
+            color: white;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
+    
+    <script>
+        // UI interaction enhancements
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add smooth scrolling
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    document.querySelector(this.getAttribute('href')).scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                });
+            });
+            
+            // Add ripple effect to buttons
+            document.querySelectorAll('.btn-primary').forEach(button => {
+                button.addEventListener('click', function(e) {
+                    let ripple = document.createElement('div');
+                    ripple.classList.add('ripple');
+                    this.appendChild(ripple);
+                    let rect = this.getBoundingClientRect();
+                    ripple.style.left = e.clientX - rect.left + 'px';
+                    ripple.style.top = e.clientY - rect.top + 'px';
+                    setTimeout(() => ripple.remove(), 600);
+                });
+            });
+        });
+    </script>
     """
 
 def get_theme_colors(theme='dark'):

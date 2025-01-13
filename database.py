@@ -21,19 +21,13 @@ class Database:
         self.db_path = "urls.db"
         
         try:
-            # Always initialize fresh database when reset flag exists
-            if os.path.exists(".db_reset"):
-                if os.path.exists(self.db_path):
-                    os.remove(self.db_path)
-                logger.info("Creating fresh database after reset...")
-                self.initialize_database()
-                os.remove(".db_reset")  # Remove reset flag
-                return
-
-            # Normal initialization
-            if not os.path.exists(self.db_path):
-                logger.info("Creating new database...")
-                self.initialize_database()
+            # Force database reset for testing
+            if os.path.exists(self.db_path):
+                os.remove(self.db_path)
+                logger.info("Existing database removed")
+            
+            logger.info("Creating new database...")
+            self.initialize_database()
             
         except Exception as e:
             logger.error(f"Database initialization error: {str(e)}")
@@ -51,6 +45,31 @@ class Database:
             # Drop existing tables if they exist
             c.execute("DROP TABLE IF EXISTS analytics")
             c.execute("DROP TABLE IF EXISTS urls")
+            c.execute("DROP TABLE IF EXISTS users")
+            c.execute("DROP TABLE IF EXISTS organizations")
+            
+            # Create organizations table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS organizations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    domain TEXT NOT NULL UNIQUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create users table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE,
+                    password TEXT NOT NULL,
+                    organization_id INTEGER,
+                    role TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (organization_id) REFERENCES organizations(id)
+                )
+            ''')
             
             # Create URLs table
             c.execute('''
@@ -73,7 +92,7 @@ class Database:
                 )
             ''')
             
-            # Create analytics table with time_on_page column
+            # Create analytics table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS analytics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,8 +110,25 @@ class Database:
                 )
             ''')
 
+            # Insert default organization with VBG's official domain
+            c.execute('''
+                INSERT OR IGNORE INTO organizations (id, name, domain) 
+                VALUES (1, 'VBG Game Studios', 'virtualbattleground.in')
+            ''')
+
+            # Insert default users
+            c.execute('''
+                INSERT OR IGNORE INTO users (username, password, organization_id, role) 
+                VALUES ('admin', 'admin123', 1, 'admin')
+            ''')
+            
+            c.execute('''
+                INSERT OR IGNORE INTO users (username, password, organization_id, role)
+                VALUES ('nandan', 'nandan123', 1, 'user')
+            ''')
+
             conn.commit()
-            logger.info("Database tables initialized successfully")
+            logger.info("Database initialized with VBG Game Studios domain")
             
         except Exception as e:
             logger.error(f"Error initializing database: {str(e)}")
@@ -724,5 +760,81 @@ class Database:
             conn.rollback()
             return False
             
+        finally:
+            conn.close()
+
+    def get_user(self, username: str) -> Optional[dict]:
+        """Get user by username"""
+        try:
+            query = """
+                SELECT u.*, o.name as organization, o.domain
+                FROM users u
+                JOIN organizations o ON u.organization_id = o.id
+                WHERE u.username = ?
+            """
+            logger.info(f"Fetching user data for: {username}")
+            result = self.execute_query(query, (username,), fetch_one=True)
+            logger.info(f"Query result: {result}")
+            return result if result else None
+        except Exception as e:
+            logger.error(f"Error getting user data: {str(e)}", exc_info=True)
+            return None
+
+    def get_organization_users(self, organization_id: int) -> List[dict]:
+        """Get all users in an organization"""
+        query = """
+            SELECT username, role, created_at
+            FROM users
+            WHERE organization_id = ?
+        """
+        return self.execute_query(query, (organization_id,))
+
+    def add_user(self, username: str, password: str, organization_id: int, role: str = 'user') -> bool:
+        """Add a new user to an organization"""
+        query = """
+            INSERT INTO users (username, password, organization_id, role)
+            VALUES (?, ?, ?, ?)
+        """
+        try:
+            self.execute_query(query, (username, password, organization_id, role))
+            return True
+        except Exception as e:
+            logger.error(f"Error adding user: {str(e)}")
+            return False
+
+    def remove_user(self, username: str, organization_id: int) -> bool:
+        """Remove a user from an organization"""
+        query = """
+            DELETE FROM users
+            WHERE username = ? AND organization_id = ?
+        """
+        try:
+            self.execute_query(query, (username, organization_id))
+            return True
+        except Exception as e:
+            logger.error(f"Error removing user: {str(e)}")
+            return False
+
+    def execute_query(self, query: str, params: tuple = (), fetch_one: bool = False):
+        """Execute a database query with parameters"""
+        conn = self.get_connection()
+        try:
+            conn.row_factory = sqlite3.Row  # This allows accessing columns by name
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            
+            if query.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE')):
+                conn.commit()
+                return cursor.lastrowid
+            else:
+                if fetch_one:
+                    return cursor.fetchone()
+                return cursor.fetchall()
+            
+        except Exception as e:
+            logger.error(f"Database query error: {str(e)}")
+            if query.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE')):
+                conn.rollback()
+            raise
         finally:
             conn.close()

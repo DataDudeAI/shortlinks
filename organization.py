@@ -1,79 +1,91 @@
-from typing import Dict, Any, List
+import streamlit as st
 import logging
-from datetime import datetime
+from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
 class Organization:
-    def __init__(self, db):
-        self.db = db
+    def __init__(self, database):
+        self.db = database
 
-    def create_organization(self, data: Dict[str, Any]) -> bool:
-        """Create a new organization with social media and ad network credentials"""
+    def get_organization_details(self, org_id: int) -> Optional[Dict]:
+        """Get organization details"""
         try:
-            org_data = {
-                'org_id': data.get('org_id'),
-                'name': data.get('name'),
-                'website': data.get('website'),
-                'industry': data.get('industry'),
-                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'social_media': {
-                    'facebook': {
-                        'app_id': data.get('fb_app_id'),
-                        'app_secret': data.get('fb_app_secret'),
-                        'access_token': data.get('fb_access_token'),
-                        'page_id': data.get('fb_page_id')
-                    },
-                    'twitter': {
-                        'api_key': data.get('twitter_api_key'),
-                        'api_secret': data.get('twitter_api_secret'),
-                        'access_token': data.get('twitter_access_token'),
-                        'access_secret': data.get('twitter_access_secret')
-                    },
-                    'linkedin': {
-                        'client_id': data.get('linkedin_client_id'),
-                        'client_secret': data.get('linkedin_client_secret'),
-                        'access_token': data.get('linkedin_access_token')
-                    },
-                    'instagram': {
-                        'client_id': data.get('instagram_client_id'),
-                        'client_secret': data.get('instagram_client_secret'),
-                        'access_token': data.get('instagram_access_token')
-                    }
-                },
-                'ad_networks': {
-                    'google_ads': {
-                        'client_id': data.get('google_client_id'),
-                        'client_secret': data.get('google_client_secret'),
-                        'developer_token': data.get('google_developer_token'),
-                        'refresh_token': data.get('google_refresh_token'),
-                        'customer_id': data.get('google_customer_id')
-                    },
-                    'facebook_ads': {
-                        'ad_account_id': data.get('fb_ad_account_id'),
-                        'access_token': data.get('fb_ads_access_token')
-                    },
-                    'linkedin_ads': {
-                        'organization_id': data.get('linkedin_org_id'),
-                        'access_token': data.get('linkedin_ads_access_token')
-                    }
-                },
-                'settings': {
-                    'auto_posting': data.get('auto_posting', False),
-                    'default_platforms': data.get('default_platforms', []),
-                    'post_approval': data.get('post_approval', True),
-                    'scheduling_enabled': data.get('scheduling_enabled', False)
+            org = self.db.execute_query(
+                "SELECT * FROM organizations WHERE id = ?",
+                (org_id,),
+                fetch_one=True
+            )
+            if org:
+                return {
+                    'id': org['id'],
+                    'name': org['name'],
+                    'domain': org['domain'],
+                    'created_at': org['created_at']
                 }
-            }
-            return self.db.save_organization(org_data)
+            return None
         except Exception as e:
-            logger.error(f"Error creating organization: {str(e)}")
-            return False
+            logger.error(f"Error getting organization details: {str(e)}")
+            return None
 
-    def update_organization(self, org_id: str, data: Dict[str, Any]) -> bool:
-        """Update organization settings and credentials"""
-        try:
-            return self.db.update_organization(org_id, data)
-        except Exception as e:
-            logger.error(f"Error updating organization: {str(e)}")
-            return False 
+    def render_organization_settings(self):
+        """Render organization settings page"""
+        if not st.session_state.get('user') or st.session_state.user['role'] != 'admin':
+            st.error("You don't have permission to access organization settings")
+            return
+
+        st.title("🏢 Organization Settings")
+        
+        org_id = st.session_state.user.get('organization_id')
+        org_details = self.get_organization_details(org_id)
+
+        if not org_details:
+            st.error("Organization not found")
+            return
+
+        # Organization Details
+        st.header("Organization Details")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.text_input("Organization Name", value=org_details['name'], disabled=True)
+        with col2:
+            st.text_input("Domain", value=org_details['domain'], disabled=True)
+
+        # User Management
+        st.header("👥 User Management")
+        
+        # Add New User
+        with st.expander("Add New User", expanded=False):
+            with st.form("add_user_form"):
+                new_username = st.text_input("Username")
+                new_password = st.text_input("Password", type="password")
+                new_role = st.selectbox("Role", ["user", "admin"])
+                
+                if st.form_submit_button("Add User"):
+                    if new_username and new_password:
+                        if self.db.add_user(new_username, new_password, org_id, new_role):
+                            st.success(f"User {new_username} added successfully!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to add user")
+                    else:
+                        st.error("Please fill in all fields")
+
+        # List Users
+        users = self.db.get_organization_users(org_id)
+        if users:
+            st.subheader("Current Users")
+            for user in users:
+                col1, col2, col3 = st.columns([3,2,1])
+                with col1:
+                    st.text(user['username'])
+                with col2:
+                    st.text(user['role'])
+                with col3:
+                    if user['username'] != 'admin':  # Prevent removing admin
+                        if st.button("Remove", key=f"remove_{user['username']}"):
+                            if self.db.remove_user(user['username'], org_id):
+                                st.success(f"User {user['username']} removed")
+                                st.rerun()
+                            else:
+                                st.error("Failed to remove user") 
