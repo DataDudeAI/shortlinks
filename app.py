@@ -66,7 +66,7 @@ st.markdown("""
 # At the start of your app, after st.set_page_config
 setup_page()
 
-BASE_URL = "https://shortlinksnandan.streamlit.app/"  # For local development
+BASE_URL = "http://localhost:8501/"  # For local development
 
 CAMPAIGN_TYPES = {
     "Social Media": "🔵",
@@ -1393,74 +1393,9 @@ def main():
         # Initialize database only once
         if 'db' not in st.session_state:
             st.session_state.db = Database()
-            # Remove reinitialize_tables since it doesn't exist
             logger.info("Database initialized")
 
-        # Initialize auth if not already done
-        if 'auth' not in st.session_state:
-            st.session_state.auth = Auth(st.session_state.db)
-            logger.info("Auth initialized")
-
-        # Initialize Google Analytics
-        if 'ga' not in st.session_state:
-            try:
-                st.session_state.ga = GoogleAnalytics()
-                logger.info("Google Analytics initialized successfully")
-            except Exception as e:
-                logger.warning(f"Google Analytics initialization failed: {str(e)}")
-                st.session_state.ga = None
-
-        # Initialize User Journey Tracker with GA client
-        if 'journey_tracker' not in st.session_state:
-            try:
-                # Only initialize if GA is available
-                if st.session_state.ga:
-                    st.session_state.journey_tracker = UserJourneyTracker(
-                        database=st.session_state.db,  # Changed back to 'database'
-                        analytics_client=st.session_state.ga  # Changed to 'analytics_client'
-                    )
-                    logger.info("User Journey Tracker initialized successfully")
-                else:
-                    st.session_state.journey_tracker = None
-                    logger.warning("Journey Tracker not initialized - GA not available")
-            except Exception as e:
-                logger.warning(f"Journey Tracker initialization failed: {str(e)}")
-                st.session_state.journey_tracker = None
-
-        # Handle logout action first
-        if st.sidebar.button("Logout"):
-            if 'auth' in st.session_state:
-                st.session_state.auth.logout()
-                st.rerun()  # Use rerun instead of reload
-                return
-
-        # Check authentication before proceeding
-        if not st.session_state.auth.is_authenticated():
-            render_login_page()
-            return
-
-        # Track page view only if authenticated and GA available
-        if st.session_state.ga:
-            st.session_state.ga.track_page_view('Dashboard')
-            st.session_state.ga.track_event(
-                'page_view',
-                'dashboard',
-                'Dashboard View'
-            )
-
-        # Track user journey only if authenticated and tracker available
-        if st.session_state.journey_tracker:
-            st.session_state.journey_tracker.track_event(
-                JourneyEventType.PAGE_VIEW,
-                'dashboard_view',
-                {
-                    'page': 'dashboard',
-                    'user_role': st.session_state.user.get('role', 'unknown'),
-                    'organization': st.session_state.user.get('organization', 'unknown')
-                }
-            )
-
-        # Check for redirect first
+        # Check for redirect first - Move this before auth check
         params = st.query_params
         if 'r' in params:
             short_code = params['r']
@@ -1488,7 +1423,71 @@ def main():
             else:
                 st.error("Invalid short URL")
                 return
-            
+
+        # Initialize auth if not already done
+        if 'auth' not in st.session_state:
+            st.session_state.auth = Auth(st.session_state.db)
+            logger.info("Auth initialized")
+
+        # Initialize Google Analytics
+        if 'ga' not in st.session_state:
+            try:
+                st.session_state.ga = GoogleAnalytics()
+                logger.info("Google Analytics initialized successfully")
+            except Exception as e:
+                logger.warning(f"Google Analytics initialization failed: {str(e)}")
+                st.session_state.ga = None
+
+        # Initialize User Journey Tracker with GA client
+        if 'journey_tracker' not in st.session_state:
+            try:
+                # Only initialize if GA is available
+                if st.session_state.ga:
+                    st.session_state.journey_tracker = UserJourneyTracker(
+                        db=st.session_state.db,  # Changed back to 'db'
+                        ga=st.session_state.ga  # Changed to 'ga'
+                    )
+                    logger.info("User Journey Tracker initialized successfully")
+                else:
+                    st.session_state.journey_tracker = None
+                    logger.warning("Journey Tracker not initialized - GA not available")
+            except Exception as e:
+                logger.warning(f"Journey Tracker initialization failed: {str(e)}")
+                st.session_state.journey_tracker = None
+
+        # Handle logout action first
+        if st.sidebar.button("Logout"):
+            if 'auth' in st.session_state:
+                st.session_state.auth.logout()
+                st.rerun()  # Use rerun instead of reload
+                return
+
+        # Check authentication for dashboard access
+        if not st.session_state.auth.is_authenticated():
+            render_login_page()
+            return
+
+        # Track page view only if authenticated and GA available
+        if st.session_state.ga:
+            st.session_state.ga.track_page_view('Dashboard')
+            st.session_state.ga.track_event(
+                'page_view',
+                'dashboard',
+                'Dashboard View'
+            )
+
+        # Track user journey only if authenticated and tracker available
+        if st.session_state.journey_tracker:
+            st.session_state.journey_tracker.track_event(
+                JourneyEventType.PAGE_VIEW,
+                'dashboard_view',
+                {
+                    'page': 'dashboard',
+                    'user_role': st.session_state.user.get('role', 'unknown'),
+                    'organization': st.session_state.user.get('organization', 'unknown')
+                }
+            )
+
         # Initialize shortener only after authentication
         if 'shortener' not in st.session_state:
             st.session_state.shortener = URLShortener()

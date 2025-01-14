@@ -354,11 +354,9 @@ class Database:
             conn.close()
 
     def get_url_info(self, short_code: str) -> Optional[Dict[str, Any]]:
-        """Get URL info by short code"""
-        conn = self.get_connection()
-        c = conn.cursor()
+        """Get URL info including click stats"""
         try:
-            c.execute('''
+            query = """
                 SELECT 
                     original_url,
                     campaign_name,
@@ -366,36 +364,15 @@ class Database:
                     created_at,
                     last_clicked,
                     total_clicks,
-                    utm_source,
-                    utm_medium,
-                    utm_campaign,
-                    utm_content,
                     is_active
                 FROM urls 
                 WHERE short_code = ?
-            ''', (short_code,))
-            
-            row = c.fetchone()
-            if row:
-                return {
-                    'original_url': row[0],
-                    'campaign_name': row[1],
-                    'campaign_type': row[2],
-                    'created_at': row[3],
-                    'last_clicked': row[4],
-                    'total_clicks': row[5],
-                    'utm_source': row[6],
-                    'utm_medium': row[7],
-                    'utm_campaign': row[8],
-                    'utm_content': row[9],
-                    'is_active': bool(row[10])
-                }
-            return None
+            """
+            result = self.execute_query(query, (short_code,), fetch_one=True)
+            return result if result else None
         except Exception as e:
             logger.error(f"Error getting URL info: {str(e)}")
             return None
-        finally:
-            conn.close()
 
     def get_campaign_performance(self) -> pd.DataFrame:
         """Get detailed campaign performance metrics"""
@@ -655,30 +632,41 @@ class Database:
                 'avg_time': 0
             }
 
-    def record_click(self, short_code: str, **click_data):
+    def record_click(self, short_code: str, client_info: Dict[str, Any]):
         """Record click analytics"""
         try:
             query = """
                 INSERT INTO analytics (
                     short_code, clicked_at, ip_address, user_agent,
                     referrer, state, device_type, browser, os
-                ) VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
-            params = (
+            self.execute_query(query, (
                 short_code,
-                click_data.get('ip_address'),
-                click_data.get('user_agent'),
-                click_data.get('referrer'),
-                click_data.get('state'),
-                click_data.get('device_type', 'Unknown'),  # Default to Unknown
-                click_data.get('browser', 'Unknown'),      # Default to Unknown
-                click_data.get('os', 'Unknown')           # Default to Unknown
-            )
-            self.execute_query(query, params)
-            logger.info(f"Recorded click with device data for {short_code}")
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                client_info.get('ip_address'),
+                client_info.get('user_agent'),
+                client_info.get('referrer'),
+                client_info.get('state'),
+                client_info.get('device_type'),
+                client_info.get('browser'),
+                client_info.get('os')
+            ))
+
+            # Update click count
+            update_query = """
+                UPDATE urls 
+                SET total_clicks = total_clicks + 1,
+                    last_clicked = CURRENT_TIMESTAMP
+                WHERE short_code = ?
+            """
+            self.execute_query(update_query, (short_code,))
             
+            logger.info(f"Recorded click for {short_code}")
+            return True
         except Exception as e:
             logger.error(f"Error recording click: {str(e)}")
+            return False
 
     def update_url_stats(self, short_code: str):
         """Update URL statistics after click"""
@@ -696,32 +684,21 @@ class Database:
             logger.error(f"Error updating URL stats: {str(e)}")
 
     def handle_redirect(self, short_code: str) -> Optional[str]:
-        """Handle URL redirect and record click data"""
+        """Handle URL redirect and record analytics"""
         try:
             # Get URL info
             url_info = self.get_url_info(short_code)
-            if not url_info:
+            if not url_info or not url_info.get('is_active', False):
                 return None
 
-            # Get client info from Streamlit session state
+            # Get client info from session state
             client_info = st.session_state.get('client_info', {})
             
-            # Record click with analytics
-            self.record_click(
-                short_code=short_code,
-                ip_address=client_info.get('ip_address'),
-                user_agent=client_info.get('user_agent'),
-                referrer=client_info.get('referrer'),
-                state=client_info.get('state'),
-                device_type=client_info.get('device_type'),
-                browser=client_info.get('browser'),
-                os=client_info.get('os')
-            )
-
-            # Update URL stats
-            self.update_url_stats(short_code)
+            # Record the click
+            self.record_click(short_code, client_info)
             
-            return url_info['original_url']
+            # Return original URL for redirect
+            return url_info.get('original_url')
             
         except Exception as e:
             logger.error(f"Error handling redirect: {str(e)}")
@@ -842,3 +819,138 @@ class Database:
             raise
         finally:
             conn.close()
+
+    def get_total_visitors(self) -> int:
+        """Get total number of visitors"""
+        try:
+            query = "SELECT COUNT(DISTINCT ip_address) FROM analytics"
+            result = self.execute_query(query, fetch_one=True)
+            return result['COUNT(DISTINCT ip_address)'] if result else 0
+        except Exception as e:
+            logger.error(f"Error getting total visitors: {str(e)}")
+            return 0
+
+    def get_unique_visitors(self) -> int:
+        """Get number of unique visitors"""
+        try:
+            query = """
+                SELECT COUNT(DISTINCT ip_address) as unique_visitors
+                FROM analytics
+                WHERE clicked_at >= date('now', '-30 day')
+            """
+            result = self.execute_query(query, fetch_one=True)
+            return result['unique_visitors'] if result else 0
+        except Exception as e:
+            logger.error(f"Error getting unique visitors: {str(e)}")
+            return 0
+
+    def get_total_conversions(self) -> int:
+        """Get total number of conversions"""
+        try:
+            query = """
+                SELECT COUNT(*) as conversions
+                FROM analytics
+                WHERE event_type = 'conversion'
+            """
+            result = self.execute_query(query, fetch_one=True)
+            return result['conversions'] if result else 0
+        except Exception as e:
+            logger.error(f"Error getting total conversions: {str(e)}")
+            return 0
+
+    def get_device_stats(self) -> Dict[str, int]:
+        """Get device type distribution"""
+        try:
+            query = """
+                SELECT device_type, COUNT(*) as count
+                FROM analytics
+                GROUP BY device_type
+            """
+            results = self.execute_query(query)
+            return {row['device_type']: row['count'] for row in results}
+        except Exception as e:
+            logger.error(f"Error getting device stats: {str(e)}")
+            return {}
+
+    def get_browser_stats(self) -> Dict[str, int]:
+        """Get browser distribution"""
+        try:
+            query = """
+                SELECT browser, COUNT(*) as count
+                FROM analytics
+                GROUP BY browser
+            """
+            results = self.execute_query(query)
+            return {row['browser']: row['count'] for row in results}
+        except Exception as e:
+            logger.error(f"Error getting browser stats: {str(e)}")
+            return {}
+
+    def get_os_stats(self) -> Dict[str, int]:
+        """Get OS distribution"""
+        try:
+            query = """
+                SELECT os, COUNT(*) as count
+                FROM analytics
+                GROUP BY os
+            """
+            results = self.execute_query(query)
+            return {row['os']: row['count'] for row in results}
+        except Exception as e:
+            logger.error(f"Error getting OS stats: {str(e)}")
+            return {}
+
+    def get_geo_stats(self) -> Dict[str, int]:
+        """Get geographical distribution"""
+        try:
+            query = """
+                SELECT state, COUNT(*) as count
+                FROM analytics
+                WHERE state IS NOT NULL
+                GROUP BY state
+            """
+            results = self.execute_query(query)
+            return {row['state']: row['count'] for row in results}
+        except Exception as e:
+            logger.error(f"Error getting geo stats: {str(e)}")
+            return {}
+
+    def save_analytics_event(self, event_type: str, event_data: Dict[str, Any]):
+        """Save analytics event to database"""
+        try:
+            query = """
+                INSERT INTO analytics (
+                    short_code, clicked_at, ip_address, user_agent,
+                    referrer, state, device_type, browser, os,
+                    event_type, event_data
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            self.execute_query(query, (
+                event_data.get('short_code'),
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                event_data.get('ip_address'),
+                event_data.get('user_agent'),
+                event_data.get('referrer'),
+                event_data.get('state'),
+                event_data.get('device_type'),
+                event_data.get('browser'),
+                event_data.get('os'),
+                event_type,
+                json.dumps(event_data)
+            ))
+            logger.info(f"Saved analytics event: {event_type}")
+        except Exception as e:
+            logger.error(f"Error saving analytics event: {str(e)}")
+
+    def get_recent_events(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent analytics events"""
+        try:
+            query = """
+                SELECT * FROM analytics
+                ORDER BY clicked_at DESC
+                LIMIT ?
+            """
+            return self.execute_query(query, (limit,))
+        except Exception as e:
+            logger.error(f"Error getting recent events: {str(e)}")
+            return []
