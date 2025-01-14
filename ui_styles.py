@@ -1,211 +1,155 @@
-import streamlit as st
-
-def load_ui_styles():
-    """Load enhanced UI styles with animations and hover effects"""
+def get_styles():
     return """
-        <style>
-        /* Card Styles with Enhanced Colors and Hover Effects */
-        .stat-card {
-            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-            border-radius: 12px;
+    <style>
+        /* Main theme colors */
+        :root {
+            --primary-color: #10B981; /* Default green for text and primary elements */
+            --secondary-color: #0891b2; /* Accent teal */
+            --background-color: #f9fafb; /* Light grey background */
+            --text-color: var(--primary-color); /* Green text by default */
+            --border-color: #cbd5e1; /* Soft border color */
+            --shadow-color: rgba(0, 0, 0, 0.05); /* Light shadow */
+        }
+
+        /* Dark theme colors */
+        [data-theme="dark"] {
+            --background-color: #111827;
+            --text-color: #10B981;
+            --border-color: #374151;
+            --shadow-color: rgba(0, 0, 0, 0.4);
+        }
+
+        /* Common styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--background-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            line-height: 1.5;
+        }
+
+        .main-header {
+            padding: 2rem 0;
+            text-align: center;
+            background: var(--background-color);
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 2rem;
+        }
+
+        .main-header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text-color);
+            margin: 0;
+        }
+
+        /* Card styles */
+        .card {
+            background: var(--background-color);
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
             padding: 1.5rem;
-            border: 1px solid rgba(226, 232, 240, 0.8);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 4px var(--shadow-color);
         }
-        
-        .stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 15px -3px rgba(0, 0, 0, 0.1);
-            border-color: #0891b2;
-        }
-        
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, #0891b2, #0ea5e9);
-            transform: scaleX(0);
-            transition: transform 0.3s ease;
-            transform-origin: left;
-        }
-        
-        .stat-card:hover::before {
-            transform: scaleX(1);
-        }
-        
-        /* Activity Item with Enhanced Animation */
-        .activity-item {
-            background: white;
-            padding: 1rem;
-            border-radius: 10px;
-            margin-bottom: 0.75rem;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            cursor: pointer;
-        }
-        
-        .activity-item:hover {
-            transform: scale(1.02);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            border-color: #0891b2;
-        }
-        
-        /* Enhanced Button Styles */
-        .custom-button {
-            background: linear-gradient(135deg, #0891b2 0%, #0ea5e9 100%);
+
+        /* Button styles */
+        .btn-primary {
+            background-color: var(--primary-color);
             color: white;
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem;
             border: none;
             cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: background-color 0.2s, transform 0.2s;
         }
-        
-        .custom-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(8, 145, 178, 0.3);
-        }
-        
-        /* Dashboard Header with Animation */
-        .main-header {
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-            padding: 2rem;
-            border-radius: 12px;
-            margin-bottom: 2rem;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .main-header::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 3px;
-            background: linear-gradient(90deg, #0891b2, #0ea5e9);
-            transform: scaleX(0.8);
-            transition: transform 0.3s ease;
-        }
-        
-        .main-header:hover::after {
-            transform: scaleX(1);
-        }
-        
-        /* Enhanced Metric Cards */
-        .metric-card {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 12px;
-            border: 1px solid #e2e8f0;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .metric-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-        }
-        
-        .metric-card .value {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #0891b2;
-            margin: 0.5rem 0;
-            transition: color 0.3s ease;
-        }
-        
-        .metric-card:hover .value {
-            color: #0ea5e9;
-        }
-        
-        /* Animated Loading States */
-        .loading {
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .loading::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(
-                90deg,
-                rgba(255, 255, 255, 0) 0%,
-                rgba(255, 255, 255, 0.6) 50%,
-                rgba(255, 255, 255, 0) 100%
-            );
-            animation: shimmer 1.5s infinite;
-        }
-        
-        @keyframes shimmer {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-        }
-        
-        /* Enhanced Table Styles */
-        .custom-table {
-            border-collapse: separate;
-            border-spacing: 0;
-            width: 100%;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-        }
-        
-        .custom-table tr {
-            transition: all 0.3s ease;
-        }
-        
-        .custom-table tr:hover {
-            background-color: #f8fafc;
-            transform: scale(1.01);
-        }
-        
-        /* Sidebar Enhancement */
-        .sidebar-nav {
-            padding: 1rem;
-            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-            border-radius: 12px;
-            margin: 1rem 0;
-            transition: all 0.3s ease;
-        }
-        
-        .sidebar-nav:hover {
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        }
-        </style>
-    """
 
-def get_theme_colors(theme='dark'):
-    """Get color scheme based on theme"""
-    return {
-        'light': {
-            'background': '#F8FAFC',
-            'secondary_background': '#FFFFFF',
-            'card_background': '#FFFFFF',
-            'text': '#1E293B',
-            'secondary_text': '#475569',
-        },
-        'dark': {
-            'background': '#0B0F19',
-            'secondary_background': '#151B28',
-            'card_background': '#1A2332',
-            'text': '#E2E8F0',
-            'secondary_text': '#94A3B8',
+        .btn-primary:hover {
+            background-color: #059669;
+            transform: translateY(-2px);
         }
-    }[theme] 
+
+        /* Activity item styles */
+        .activity-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            background: var(--background-color);
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+            margin-bottom: 0.75rem;
+            box-shadow: 0 1px 3px var(--shadow-color);
+        }
+
+        .activity-icon {
+            font-size: 1.5rem;
+            margin-right: 1rem;
+            color: var(--primary-color);
+        }
+
+        .activity-content {
+            flex: 1;
+        }
+
+        .activity-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .activity-meta {
+            font-size: 0.875rem;
+            color: var(--secondary-color);
+        }
+
+        /* Form styles */
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--text-color);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            background: var(--background-color);
+            color: var(--text-color);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.4);
+        }
+
+        /* Login page styles */
+        .login-container {
+            max-width: 400px;
+            margin: 5rem auto;
+            padding: 2rem;
+            background: var(--background-color);
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 8px var(--shadow-color);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .login-header h2 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+    </style>
+    """
