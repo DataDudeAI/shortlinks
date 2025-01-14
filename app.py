@@ -949,7 +949,7 @@ class URLShortener:
 
         with trend_cols[1]:
             # Traffic Source Analysis
-            st.markdown("#### Traffic Sources")
+            #st.markdown("#### Traffic Sources")
             traffic_data = {
                 'Source': ['Direct', 'Social', 'Email', 'Referral', 'Organic'],
                 'Visits': [stats.get('direct_visits', 120), 
