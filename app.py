@@ -1255,6 +1255,65 @@ def render_dashboard():
                 margin=dict(t=30, b=0, l=0, r=0)
             )
             st.plotly_chart(fig_campaign, use_container_width=True)
+
+            
+        # Add campaign stats table with download
+        st.markdown("### Campaign Performance")
+        
+        # Get detailed campaign stats
+        campaign_stats_query = """
+            SELECT 
+                u.campaign_name,
+                u.campaign_type,
+                u.short_code,
+                COUNT(a.id) as total_clicks,
+                COUNT(DISTINCT a.ip_address) as unique_visitors,
+                ROUND(AVG(a.time_on_page), 2) as avg_time_on_page,
+                ROUND(COUNT(DISTINCT a.ip_address) * 100.0 / NULLIF(COUNT(*), 0), 2) as conversion_rate,
+                ROUND(COUNT(CASE WHEN a.time_on_page < 10 THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 2) as bounce_rate,
+                u.created_at,
+                MAX(a.clicked_at) as last_click
+            FROM urls u
+            LEFT JOIN analytics a ON u.short_code = a.short_code
+            GROUP BY u.campaign_name, u.campaign_type, u.short_code, u.created_at
+            ORDER BY total_clicks DESC
+        """
+        campaign_stats_df = pd.DataFrame(shortener.db.execute_query(campaign_stats_query))
+        
+        if not campaign_stats_df.empty:
+            # Format the DataFrame
+            campaign_stats_df['conversion_rate'] = campaign_stats_df['conversion_rate'].map('{:.1f}%'.format)
+            campaign_stats_df['bounce_rate'] = campaign_stats_df['bounce_rate'].map('{:.1f}%'.format)
+            campaign_stats_df['avg_time_on_page'] = campaign_stats_df['avg_time_on_page'].map('{:.1f} sec'.format)
+            
+            # Add download button
+            csv = campaign_stats_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Campaign Stats",
+                data=csv,
+                file_name="campaign_stats.csv",
+                mime="text/csv",
+                help="Download complete campaign statistics as CSV"
+            )
+            
+            # Display the table
+            st.dataframe(
+                campaign_stats_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "campaign_name": "Campaign Name",
+                    "campaign_type": "Type",
+                    "short_code": "Code",
+                    "total_clicks": st.column_config.NumberColumn("Clicks"),
+                    "unique_visitors": st.column_config.NumberColumn("Unique Visitors"),
+                    "conversion_rate": "Conversion Rate",
+                    "bounce_rate": "Bounce Rate",
+                    "avg_time_on_page": "Avg. Time",
+                    "created_at": st.column_config.DatetimeColumn("Created"),
+                    "last_click": st.column_config.DatetimeColumn("Last Click")
+                }
+            )
         
 
         # Recent Activity
