@@ -9,6 +9,7 @@ import random
 import string
 from urllib.parse import urlparse, parse_qs, urlencode
 import streamlit as st
+import uuid
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -101,7 +102,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS analytics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     short_code TEXT NOT NULL,
-                    clicked_at DATETIME NOT NULL,
+                    clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     ip_address TEXT,
                     user_agent TEXT,
                     referrer TEXT,
@@ -109,7 +110,28 @@ class Database:
                     device_type TEXT,
                     browser TEXT,
                     os TEXT,
+                    event_type TEXT,
+                    event_data TEXT,
+                    session_id TEXT,
                     time_on_page INTEGER DEFAULT 0,
+                    is_bounce BOOLEAN DEFAULT 0,
+                    is_conversion BOOLEAN DEFAULT 0,
+                    engagement_score FLOAT DEFAULT 0,
+                    FOREIGN KEY (short_code) REFERENCES urls(short_code)
+                )
+            ''')
+
+            # Add engagement tracking table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS engagement_metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    short_code TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    page_views INTEGER DEFAULT 1,
+                    time_spent INTEGER DEFAULT 0,
+                    actions_taken INTEGER DEFAULT 0,
+                    is_converted BOOLEAN DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (short_code) REFERENCES urls(short_code)
                 )
             ''')
@@ -633,13 +655,18 @@ class Database:
             }
 
     def record_click(self, short_code: str, client_info: Dict[str, Any]):
-        """Record click analytics"""
+        """Record click analytics with engagement metrics"""
         try:
+            # Generate session ID if not exists
+            session_id = client_info.get('session_id', str(uuid.uuid4()))
+            
+            # Record basic click data
             query = """
                 INSERT INTO analytics (
                     short_code, clicked_at, ip_address, user_agent,
-                    referrer, state, device_type, browser, os
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    referrer, state, device_type, browser, os,
+                    event_type, session_id, is_bounce
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             """
             self.execute_query(query, (
                 short_code,
@@ -650,10 +677,21 @@ class Database:
                 client_info.get('state'),
                 client_info.get('device_type'),
                 client_info.get('browser'),
-                client_info.get('os')
+                client_info.get('os'),
+                'click',
+                session_id
             ))
 
-            # Update click count
+            # Initialize engagement metrics
+            engagement_query = """
+                INSERT INTO engagement_metrics (
+                    short_code, session_id, page_views,
+                    time_spent, actions_taken
+                ) VALUES (?, ?, 1, 0, 0)
+            """
+            self.execute_query(engagement_query, (short_code, session_id))
+
+            # Update URL click count
             update_query = """
                 UPDATE urls 
                 SET total_clicks = total_clicks + 1,
@@ -662,7 +700,7 @@ class Database:
             """
             self.execute_query(update_query, (short_code,))
             
-            logger.info(f"Recorded click for {short_code}")
+            logger.info(f"Recorded click with engagement metrics for {short_code}")
             return True
         except Exception as e:
             logger.error(f"Error recording click: {str(e)}")

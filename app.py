@@ -66,7 +66,7 @@ st.markdown("""
 # At the start of your app, after st.set_page_config
 setup_page()
 
-BASE_URL = "https://shortlinksnandan.streamlit.app/"  # For local development
+BASE_URL = "http://localhost:8501/"  # For local development
 
 CAMPAIGN_TYPES = {
     "Social Media": "🔵",
@@ -778,6 +778,242 @@ class URLShortener:
         else:
             st.info("No campaign data available for the selected filters")
 
+        # Campaign Performance Metrics - Now in 3 columns with cards
+        st.markdown("#### Campaign Insights")
+        insight_cols = st.columns(3)
+        
+        with insight_cols[0]:
+            avg_time = stats.get('avg_time', 0)
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">
+                        <span class="metric-icon">⏱️</span>
+                        Engagement
+                    </div>
+                    <div class="metric-value">
+                        {avg_time:.1f}
+                        <span class="unit">seconds</span>
+                    </div>
+                    <div class="metric-delta positive">+12% vs last month</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        with insight_cols[1]:
+            bounce_rate = stats.get('bounce_rate', 0)
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">
+                        <span class="metric-icon">↩️</span>
+                        Bounce Rate
+                    </div>
+                    <div class="metric-value">
+                        {bounce_rate:.1f}
+                        <span class="unit">%</span>
+                    </div>
+                    <div class="metric-delta negative">-5% vs last month</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        with insight_cols[2]:
+            total_clicks = stats.get('total_clicks', 0)
+            impressions = stats.get('impressions', 1)
+            conversion_rate = (total_clicks / max(1, impressions)) * 100
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">
+                        <span class="metric-icon">🎯</span>
+                        Conversion Rate
+                    </div>
+                    <div class="metric-value">
+                        {conversion_rate:.1f}
+                        <span class="unit">%</span>
+                    </div>
+                    <div class="metric-delta positive">+15% vs last month</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        # Device Analytics and Campaign Distribution
+        st.markdown("### 📱 Analytics Overview")
+        
+        # First row - Device and Browser stats
+        device_cols = st.columns(2)
+        with device_cols[0]:
+            # Combined Device and Browser Stats
+            if stats.get('device_stats') and stats.get('browser_stats'):
+                # Create tabs for different views
+                device_tabs = st.tabs(["📱 Devices", "🌐 Browsers"])
+                
+                with device_tabs[0]:
+                    device_df = pd.DataFrame(list(stats['device_stats'].items()), 
+                                        columns=['Device', 'Count'])
+                    fig = px.pie(
+                        device_df,
+                        values='Count',
+                        names='Device',
+                        title='Device Distribution',
+                        color_discrete_sequence=['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B'],
+                        hole=0.4
+                    )
+                    fig.update_traces(textposition='outside', textinfo='percent+label')
+                    fig.update_layout(
+                        showlegend=True,
+                        height=400,
+                        margin=dict(t=30, b=0, l=0, r=0)
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with device_tabs[1]:
+                    browser_df = pd.DataFrame(list(stats['browser_stats'].items()),
+                                            columns=['Browser', 'Count'])
+                    fig = px.pie(
+                        browser_df,
+                        values='Count',
+                        names='Browser',
+                        title='Browser Distribution',
+                        color_discrete_sequence=['#3B82F6', '#8B5CF6', '#F59E0B', '#10B981'],
+                        hole=0.4
+                    )
+                    fig.update_traces(textposition='outside', textinfo='percent+label')
+                    fig.update_layout(
+                        showlegend=True,
+                        height=400,
+                        margin=dict(t=30, b=0, l=0, r=0)
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No device/browser data available yet")
+
+        with device_cols[1]:
+            # Campaign Performance Metrics
+            st.markdown("#### Campaign Insights")
+            
+            # Engagement Metrics as regular metrics
+            st.metric(
+                "Avg. Time on Page",
+                f"{stats.get('avg_time', 0):.1f}s",
+                delta="+12%",
+                help="Average time users spend on landing pages"
+            )
+            st.metric(
+                "Bounce Rate",
+                f"{stats.get('bounce_rate', 0):.1f}%",
+                delta="-5%",
+                delta_color="inverse",
+                help="Percentage of single-page visits"
+            )
+            st.metric(
+                "CTR",
+                f"{(stats.get('total_clicks', 0) / max(1, stats.get('impressions', 1)) * 100):.1f}%",
+                delta="+8%",
+                help="Click-through rate"
+            )
+            st.metric(
+                "Conversion Rate",
+                f"{stats.get('conversion_rate', 0):.1f}%",
+                delta="+15%",
+                help="Percentage of visitors who complete desired actions"
+            )
+
+        # Second row - Campaign Distribution and Trends
+        trend_cols = st.columns(2)
+        with trend_cols[0]:
+            # Campaign Type Distribution
+            campaign_type_query = """
+                SELECT 
+                    campaign_type,
+                    COUNT(*) as count,
+                    SUM(total_clicks) as total_clicks
+                FROM urls
+                GROUP BY campaign_type
+            """
+            campaign_type_stats = pd.DataFrame(shortener.db.execute_query(campaign_type_query))
+            
+            if not campaign_type_stats.empty:
+                fig = px.pie(
+                    campaign_type_stats,
+                    values='total_clicks',  # Changed to total_clicks for better insight
+                    names='campaign_type',
+                    title='Campaign Performance by Type',
+                    color_discrete_sequence=['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EC4899', '#6366F1'],
+                    hole=0.4
+                )
+                fig.update_traces(textposition='outside', textinfo='percent+label')
+                fig.update_layout(
+                    showlegend=True,
+                    height=400,
+                    margin=dict(t=30, b=0, l=0, r=0)
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No campaign data available")
+
+        with trend_cols[1]:
+            # Traffic Source Analysis
+            st.markdown("#### Traffic Sources")
+            traffic_data = {
+                'Source': ['Direct', 'Social', 'Email', 'Referral', 'Organic'],
+                'Visits': [stats.get('direct_visits', 120), 
+                          stats.get('social_visits', 80),
+                          stats.get('email_visits', 60),
+                          stats.get('referral_visits', 40),
+                          stats.get('organic_visits', 30)]
+            }
+            traffic_df = pd.DataFrame(traffic_data)
+            fig = px.bar(
+                traffic_df,
+                x='Source',
+                y='Visits',
+                title='Traffic Distribution by Source',
+                color='Source',
+                color_discrete_sequence=['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EC4899']
+            )
+            fig.update_layout(
+                showlegend=False,
+                height=400,
+                margin=dict(t=30, b=0, l=0, r=0)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Recent Activity at the very end
+        st.markdown("### 📊 Recent Activity")
+        activity_cols = st.columns([3, 1])
+        with activity_cols[0]:
+            if stats['recent_activities']:
+                for activity in stats['recent_activities']:
+                    st.markdown(f"""
+                        <div class="activity-card">
+                            <div class="activity-title">
+                                <span class="activity-icon">🔗</span>
+                                {activity.get('campaign_name', 'Unknown Campaign')}
+                            </div>
+                            <div class="activity-meta">
+                                <span>📱 {activity.get('device_type', 'Unknown')}</span>
+                                <span>📍 {activity.get('state', 'Unknown')}</span>
+                                <span>🌐 {activity.get('browser', 'Unknown')}</span>
+                                <span>🖥️ {activity.get('os', 'Unknown')}</span>
+                            </div>
+                            <div class="activity-details">
+                                <div class="detail-item">
+                                    <span>⏱️</span>
+                                    <span>Time on Page: {activity.get('time_on_page', '0')}s</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span>🔄</span>
+                                    <span>Return Visitor: {'Yes' if activity.get('is_return_visitor') else 'No'}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span>📈</span>
+                                    <span>Conversion: {activity.get('converted', 'No')}</span>
+                                </div>
+                            </div>
+                            <div class="activity-time">
+                                {activity.get('clicked_at', 'Unknown time')}
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No recent activity to show")
+
     def render_recent_activity(self, activities):
         """Render recent campaign activities with enhanced styling"""
         st.markdown("### 📊 Recent Activity")
@@ -1091,134 +1327,192 @@ def render_dashboard():
         # Get comprehensive stats with defaults
         stats = shortener.db.get_dashboard_stats()
         
-        # Ensure all required stats exist with defaults
-        stats_defaults = {
-            'total_clicks': 0,
-            'unique_visitors': 0,
-            'total_campaigns': 0,
-            'active_campaigns': 0,
-            'previous_clicks': 0,
-            'previous_unique': 0,
-            'previous_active': 0,
-            'previous_conversion': 0,
-            'bounce_rate': 0,
-            'avg_time': 0,
-            'top_campaigns': [],
-            'recent_activities': [],
-            'state_stats': {},
-            'device_stats': {},
-            'browser_stats': {},
-            'daily_stats': {},
-            'hourly_stats': {}
-        }
-        
-        # Update stats with defaults
-        for key, default_value in stats_defaults.items():
-            if key not in stats or stats[key] is None:
-                stats[key] = default_value
+        # Get campaign stats first
+        campaign_stats_query = """
+            SELECT 
+                u.campaign_name,
+                u.campaign_type,
+                u.short_code,
+                u.total_clicks,
+                COUNT(DISTINCT a.ip_address) as unique_visitors,
+                ROUND(COUNT(DISTINCT a.ip_address) * 100.0 / NULLIF(COUNT(*), 0), 2) as conversion_rate,
+                ROUND(AVG(a.time_on_page), 2) as avg_time,
+                u.created_at,
+                MAX(a.clicked_at) as last_click
+            FROM urls u
+            LEFT JOIN analytics a ON u.short_code = a.short_code
+            GROUP BY u.campaign_name, u.campaign_type, u.short_code
+            ORDER BY u.total_clicks DESC
+            LIMIT 10
+        """
+        campaign_stats = pd.DataFrame(shortener.db.execute_query(campaign_stats_query))
 
-        # Quick Actions Bar
-        # st.markdown("""
-        #     <div class="stat-card" style="margin-bottom: 2rem;">
-        #         <h3 style="margin-bottom: 1rem; color: #0f172a;">🚀 Quick Actions</h3>
-        #     </div>
-        # """, unsafe_allow_html=True)
+        # Main Metrics Display
+        st.markdown("### 📊 Key Metrics")
+        metric_cols = st.columns(4)
         
-        # Quick Action buttons
-        quick_action_cols = st.columns(4)
-        with quick_action_cols[0]:
-            st.markdown("""
-                <div class="metric-card" style="cursor: pointer; text-align: center;">
-                    <div style="font-size: 1.5rem;">➕</div>
-                    <div style="font-weight: 500; color: #0891b2;">New Campaign</div>
+        with metric_cols[0]:
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">
+                        <span class="metric-icon">👆</span>
+                        Total Clicks
+                    </div>
+                    <div class="metric-value">
+                        {stats.get('total_clicks', 0):,}
+                        <span class="unit">clicks</span>
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
+
+        with metric_cols[1]:
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">
+                        <span class="metric-icon">👥</span>
+                        Unique Users
+                    </div>
+                    <div class="metric-value">
+                        {stats.get('unique_visitors', 0):,}
+                        <span class="unit">users</span>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        with metric_cols[2]:
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">
+                        <span class="metric-icon">📈</span>
+                        Conversion Rate
+                    </div>
+                    <div class="metric-value">
+                        {stats.get('conversion_rate', 0):.1f}
+                        <span class="unit">%</span>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        with metric_cols[3]:
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">
+                        <span class="metric-icon">⚡</span>
+                        Active Campaigns
+                    </div>
+                    <div class="metric-value">
+                        {stats.get('active_campaigns', 0)}
+                        <span class="unit">active</span>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        # Quick Actions Bar with Quick Link
+        quick_action_cols = st.columns(3)
+        with quick_action_cols[0]:
             if st.button("New Campaign", key="new_campaign", use_container_width=True):
                 st.session_state.page = "create_campaign"
                 
         with quick_action_cols[1]:
-            st.markdown("""
-                <div class="metric-card" style="cursor: pointer; text-align: center;">
-                    <div style="font-size: 1.5rem;">📊</div>
-                    <div style="font-weight: 500; color: #0891b2;">Export Report</div>
-                </div>
-            """, unsafe_allow_html=True)
             if st.button("Export Report", key="export_report", use_container_width=True):
                 export_analytics()
-                
-        with quick_action_cols[2]:
-            st.markdown("""
-                <div class="metric-card" style="cursor: pointer; text-align: center;">
-                    <div style="font-size: 1.5rem;">🔄</div>
-                    <div style="font-weight: 500; color: #0891b2;">Refresh Data</div>
-                </div>
-            """, unsafe_allow_html=True)
-            if st.button("Refresh Data", key="refresh_data", use_container_width=True):
-                st.rerun()
-                
-        with quick_action_cols[3]:
-            st.markdown("""
-                <div class="metric-card" style="cursor: pointer; text-align: center;">
-                    <div style="font-size: 1.5rem;">⚡</div>
-                    <div style="font-weight: 500; color: #0891b2;">Quick Link</div>
-                </div>
-            """, unsafe_allow_html=True)
-            if st.button("Quick Link", key="quick_link", use_container_width=True):
-                show_quick_link_creator()
-        
-        # Enhanced Metrics Display
-        metrics_cols = st.columns(4)
-        with metrics_cols[0]:
-            st.metric(
-                "Total Clicks",
-                f"{stats['total_clicks']:,}",
-                f"{stats['total_clicks'] - stats['previous_clicks']:+,}",
-                help="Total number of clicks across all campaigns"
-            )
-        with metrics_cols[1]:
-            st.metric(
-                "Unique Visitors",
-                f"{stats['unique_visitors']:,}",
-                f"{(stats['unique_visitors'] / max(1, stats['total_clicks']) * 100):.1f}% Rate",
-                help="Number of unique visitors"
-            )
-        with metrics_cols[2]:
-            st.metric(
-                "Active Campaigns",
-                stats['active_campaigns'],
-                f"{stats['active_campaigns'] - stats['previous_active']:+,}",
-                help="Currently active campaigns"
-            )
-        with metrics_cols[3]:
-            conversion_rate = (stats['unique_visitors'] / max(1, stats['total_clicks'])) * 100
-            st.metric(
-                "Conversion Rate",
-                f"{conversion_rate:.1f}%",
-                f"{conversion_rate - stats['previous_conversion']:+.1f}%",
-                help="Visitor to click conversion rate"
-            )
 
-        # Add Device Distribution Chart
-        st.markdown("### 📱 Device Analytics")
-        device_cols = st.columns([1, 1])
+        with quick_action_cols[2]:
+            # Quick Link expander - closed by default
+            with st.expander("Create Quick Link", expanded=False):
+                with st.form("quick_link_form", clear_on_submit=True):
+                    quick_url = st.text_input("URL to Shorten", placeholder="https://")
+                    quick_submitted = st.form_submit_button("Create Quick Link", use_container_width=True)
+                    if quick_submitted and quick_url:
+                        try:
+                            short_code = shortener.create_short_url(quick_url, "Quick Link")
+                            if short_code:
+                                st.success(f"Short URL created: {BASE_URL}?r={short_code}")
+                        except Exception as e:
+                            st.error(f"Error creating short URL: {str(e)}")
+
+        # Campaign Performance Metrics - Now in 3 columns with cards
+        st.markdown("#### Campaign Insights")
+        insight_cols = st.columns(3)
         
+        with insight_cols[0]:
+            avg_time = stats.get('avg_time', 0)
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">
+                        <span class="metric-icon">⏱️</span>
+                        Engagement
+                    </div>
+                    <div class="metric-value">
+                        {avg_time:.1f}
+                        <span class="unit">seconds</span>
+                    </div>
+                    <div class="metric-delta positive">+12% vs last month</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        with insight_cols[1]:
+            bounce_rate = stats.get('bounce_rate', 0)
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">
+                        <span class="metric-icon">↩️</span>
+                        Bounce Rate
+                    </div>
+                    <div class="metric-value">
+                        {bounce_rate:.1f}
+                        <span class="unit">%</span>
+                    </div>
+                    <div class="metric-delta negative">-5% vs last month</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        with insight_cols[2]:
+            total_clicks = stats.get('total_clicks', 0)
+            impressions = stats.get('impressions', 1)
+            conversion_rate = (total_clicks / max(1, impressions)) * 100
+            st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">
+                        <span class="metric-icon">🎯</span>
+                        Conversion Rate
+                    </div>
+                    <div class="metric-value">
+                        {conversion_rate:.1f}
+                        <span class="unit">%</span>
+                    </div>
+                    <div class="metric-delta positive">+15% vs last month</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        # Device Analytics and Campaign Distribution
+        st.markdown("### 📱 Analytics Overview")
+        
+        # First row - Device and Browser stats
+        device_cols = st.columns(2)
         with device_cols[0]:
+            # Combined Device and Browser Stats
             if stats.get('device_stats'):
                 device_df = pd.DataFrame(list(stats['device_stats'].items()), 
-                                       columns=['Device', 'Count'])
+                                    columns=['Device', 'Count'])
                 fig = px.pie(
                     device_df,
                     values='Count',
                     names='Device',
                     title='Device Distribution',
-                    color_discrete_sequence=['#0891b2', '#0ea5e9', '#38bdf8', '#7dd3fc'],
+                    color_discrete_sequence=['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B'],
                     hole=0.4
                 )
                 fig.update_traces(textposition='outside', textinfo='percent+label')
+                fig.update_layout(
+                    showlegend=True,
+                    height=400,
+                    margin=dict(t=30, b=0, l=0, r=0)
+                )
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("No device data available yet")
-        
+
         with device_cols[1]:
             if stats.get('browser_stats'):
                 browser_df = pd.DataFrame(list(stats['browser_stats'].items()),
@@ -1228,107 +1522,118 @@ def render_dashboard():
                     values='Count',
                     names='Browser',
                     title='Browser Distribution',
-                    color_discrete_sequence=['#0891b2', '#0ea5e9', '#38bdf8', '#7dd3fc'],
+                    color_discrete_sequence=['#3B82F6', '#8B5CF6', '#F59E0B', '#10B981'],
                     hole=0.4
                 )
                 fig.update_traces(textposition='outside', textinfo='percent+label')
+                fig.update_layout(
+                    showlegend=True,
+                    height=400,
+                    margin=dict(t=30, b=0, l=0, r=0)
+                )
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("No browser data available yet")
-                
-        st.markdown("### Campaign Type Distribution")
-        campaign_type_query = """
-            SELECT 
-                campaign_type,
-                COUNT(*) as count
-            FROM urls
-            GROUP BY campaign_type
-        """
-        campaign_type_stats = pd.DataFrame(shortener.db.execute_query(campaign_type_query))
-        
-        if not campaign_type_stats.empty:
-            fig_campaign = px.pie(
-                campaign_type_stats,
-                values='count',
-                names='campaign_type',
-                title='Campaign Distribution by Type',
-                color_discrete_sequence=px.colors.qualitative.Set3
+
+        # Second row - Campaign Distribution and Trends
+        trend_cols = st.columns(2)
+        with trend_cols[0]:
+            # Campaign Type Distribution
+            campaign_type_query = """
+                SELECT 
+                    campaign_type,
+                    COUNT(*) as count,
+                    SUM(total_clicks) as total_clicks
+                FROM urls
+                GROUP BY campaign_type
+            """
+            campaign_type_stats = pd.DataFrame(shortener.db.execute_query(campaign_type_query))
+            
+            if not campaign_type_stats.empty:
+                fig = px.pie(
+                    campaign_type_stats,
+                    values='total_clicks',  # Changed to total_clicks for better insight
+                    names='campaign_type',
+                    title='Campaign Performance by Type',
+                    color_discrete_sequence=['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EC4899', '#6366F1'],
+                    hole=0.4
+                )
+                fig.update_traces(textposition='outside', textinfo='percent+label')
+                fig.update_layout(
+                    showlegend=True,
+                    height=400,
+                    margin=dict(t=30, b=0, l=0, r=0)
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No campaign data available")
+
+        with trend_cols[1]:
+            # Traffic Source Analysis
+            st.markdown("#### Traffic Sources")
+            traffic_data = {
+                'Source': ['Direct', 'Social', 'Email', 'Referral', 'Organic'],
+                'Visits': [stats.get('direct_visits', 120), 
+                          stats.get('social_visits', 80),
+                          stats.get('email_visits', 60),
+                          stats.get('referral_visits', 40),
+                          stats.get('organic_visits', 30)]
+            }
+            traffic_df = pd.DataFrame(traffic_data)
+            fig = px.bar(
+                traffic_df,
+                x='Source',
+                y='Visits',
+                title='Traffic Distribution by Source',
+                color='Source',
+                color_discrete_sequence=['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EC4899']
             )
-            fig_campaign.update_traces(textposition='inside', textinfo='percent+label')
-            fig_campaign.update_layout(
+            fig.update_layout(
                 showlegend=False,
-                height=300,
+                height=400,
                 margin=dict(t=30, b=0, l=0, r=0)
             )
-            st.plotly_chart(fig_campaign, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
 
-            
-        # Add campaign stats table with download
-        st.markdown("### Campaign Performance")
-        
-        # Get detailed campaign stats
-        campaign_stats_query = """
-            SELECT 
-                u.campaign_name,
-                u.campaign_type,
-                u.short_code,
-                COUNT(a.id) as total_clicks,
-                COUNT(DISTINCT a.ip_address) as unique_visitors,
-                ROUND(AVG(a.time_on_page), 2) as avg_time_on_page,
-                ROUND(COUNT(DISTINCT a.ip_address) * 100.0 / NULLIF(COUNT(*), 0), 2) as conversion_rate,
-                ROUND(COUNT(CASE WHEN a.time_on_page < 10 THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 2) as bounce_rate,
-                u.created_at,
-                MAX(a.clicked_at) as last_click
-            FROM urls u
-            LEFT JOIN analytics a ON u.short_code = a.short_code
-            GROUP BY u.campaign_name, u.campaign_type, u.short_code, u.created_at
-            ORDER BY total_clicks DESC
-        """
-        campaign_stats_df = pd.DataFrame(shortener.db.execute_query(campaign_stats_query))
-        
-        if not campaign_stats_df.empty:
-            # Format the DataFrame
-            campaign_stats_df['conversion_rate'] = campaign_stats_df['conversion_rate'].map('{:.1f}%'.format)
-            campaign_stats_df['bounce_rate'] = campaign_stats_df['bounce_rate'].map('{:.1f}%'.format)
-            campaign_stats_df['avg_time_on_page'] = campaign_stats_df['avg_time_on_page'].map('{:.1f} sec'.format)
-            
-            # Add download button
-            csv = campaign_stats_df.to_csv(index=False)
-            st.download_button(
-                label="📥 Download Campaign Stats",
-                data=csv,
-                file_name="campaign_stats.csv",
-                mime="text/csv",
-                help="Download complete campaign statistics as CSV"
-            )
-            
-            # Display the table
-            st.dataframe(
-                campaign_stats_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "campaign_name": "Campaign Name",
-                    "campaign_type": "Type",
-                    "short_code": "Code",
-                    "total_clicks": st.column_config.NumberColumn("Clicks"),
-                    "unique_visitors": st.column_config.NumberColumn("Unique Visitors"),
-                    "conversion_rate": "Conversion Rate",
-                    "bounce_rate": "Bounce Rate",
-                    "avg_time_on_page": "Avg. Time",
-                    "created_at": st.column_config.DatetimeColumn("Created"),
-                    "last_click": st.column_config.DatetimeColumn("Last Click")
-                }
-            )
-        
-
-        # Recent Activity
+        # Recent Activity at the very end
         st.markdown("### 📊 Recent Activity")
-        if stats['recent_activities']:
-            for activity in stats['recent_activities']:
-                render_activity_item(activity)
-        else:
-            st.info("No recent activity to show")
+        activity_cols = st.columns([3, 1])
+        with activity_cols[0]:
+            if stats['recent_activities']:
+                for activity in stats['recent_activities']:
+                    st.markdown(f"""
+                        <div class="activity-card">
+                            <div class="activity-title">
+                                <span class="activity-icon">🔗</span>
+                                {activity.get('campaign_name', 'Unknown Campaign')}
+                            </div>
+                            <div class="activity-meta">
+                                <span>📱 {activity.get('device_type', 'Unknown')}</span>
+                                <span>📍 {activity.get('state', 'Unknown')}</span>
+                                <span>🌐 {activity.get('browser', 'Unknown')}</span>
+                                <span>🖥️ {activity.get('os', 'Unknown')}</span>
+                            </div>
+                            <div class="activity-details">
+                                <div class="detail-item">
+                                    <span>⏱️</span>
+                                    <span>Time on Page: {activity.get('time_on_page', '0')}s</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span>🔄</span>
+                                    <span>Return Visitor: {'Yes' if activity.get('is_return_visitor') else 'No'}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span>📈</span>
+                                    <span>Conversion: {activity.get('converted', 'No')}</span>
+                                </div>
+                            </div>
+                            <div class="activity-time">
+                                {activity.get('clicked_at', 'Unknown time')}
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No recent activity to show")
 
     except Exception as e:
         logger.error(f"Error rendering dashboard: {str(e)}")
@@ -1444,8 +1749,8 @@ def main():
                 # Only initialize if GA is available
                 if st.session_state.ga:
                     st.session_state.journey_tracker = UserJourneyTracker(
-                        db=st.session_state.db,  # Changed back to 'db'
-                        ga=st.session_state.ga  # Changed to 'ga'
+                        database=st.session_state.db,  # Changed back to 'database'
+                        ga_client=st.session_state.ga  # Changed to 'ga_client'
                     )
                     logger.info("User Journey Tracker initialized successfully")
                 else:

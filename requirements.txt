@@ -10,5 +10,3 @@ pandas
 requests
 qrcode
 Pillow
-google-analytics-data
-python-dotenv
