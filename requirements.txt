@@ -10,3 +10,4 @@ pandas
 requests
 qrcode
 Pillow
+google-analytics-data
