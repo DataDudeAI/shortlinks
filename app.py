@@ -791,6 +791,8 @@ class URLShortener:
                 </div>
             """, unsafe_allow_html=True)
 
+            
+
     def render_campaign_manager(self):
         """Render the campaign manager with full management capabilities"""
         st.markdown("### 📊 Campaign Manager")
@@ -1227,6 +1229,33 @@ def render_dashboard():
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("No browser data available yet")
+                
+        st.markdown("### Campaign Type Distribution")
+        campaign_type_query = """
+            SELECT 
+                campaign_type,
+                COUNT(*) as count
+            FROM urls
+            GROUP BY campaign_type
+        """
+        campaign_type_stats = pd.DataFrame(shortener.db.execute_query(campaign_type_query))
+        
+        if not campaign_type_stats.empty:
+            fig_campaign = px.pie(
+                campaign_type_stats,
+                values='count',
+                names='campaign_type',
+                title='Campaign Distribution by Type',
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            fig_campaign.update_traces(textposition='inside', textinfo='percent+label')
+            fig_campaign.update_layout(
+                showlegend=False,
+                height=300,
+                margin=dict(t=30, b=0, l=0, r=0)
+            )
+            st.plotly_chart(fig_campaign, use_container_width=True)
+        
 
         # Recent Activity
         st.markdown("### 📊 Recent Activity")
