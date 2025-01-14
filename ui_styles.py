@@ -1,4 +1,4 @@
-def get_styles():
+def load_ui_styles():
     return """
     <style>
         /* Main theme colors */
