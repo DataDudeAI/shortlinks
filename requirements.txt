@@ -11,4 +11,4 @@ requests
 qrcode
 Pillow
 google-analytics-data
-dotenv
+python-dotenv
