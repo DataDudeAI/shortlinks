@@ -96,3 +96,12 @@ class Auth:
                 
         except Exception as e:
             logger.error(f"Error during logout: {str(e)}") 
+
+    def is_authenticated(self) -> bool:
+        """Check if user is authenticated"""
+        try:
+            return ('user' in st.session_state and 
+                    st.session_state.user.get('is_authenticated', False))
+        except Exception as e:
+            logger.error(f"Error checking authentication: {str(e)}")
+            return False 

@@ -3,42 +3,33 @@ def get_styles():
     <style>
         /* Main theme colors */
         :root {
-            --primary-color: #0ea5e9; /* Vibrant blue for primary actions */
-            --secondary-color: #14b8a6; /* Soft teal for accents */
-            --background-color: #f9fafb; /* Light grey background for better contrast */
-            --text-color: #1e293b; /* Darker text for readability */
-            --border-color: #cbd5e1; /* Softer border color */
-            --shadow-color: rgba(0, 0, 0, 0.05); /* Lighter shadow for depth */
+            --primary-color: #10B981;
+            --secondary-color: #0891b2;
+            --background-color: #ffffff;
+            --text-color: #1a202c;
+            --border-color: #e2e8f0;
+            --shadow-color: rgba(0,0,0,0.1);
         }
 
         /* Dark theme colors */
         [data-theme="dark"] {
-            --background-color: #111827;
-            --text-color: #e5e7eb;
-            --border-color: #374151;
-            --shadow-color: rgba(0, 0, 0, 0.4);
+            --background-color: #1a202c;
+            --text-color: #f7fafc;
+            --border-color: #2d3748;
+            --shadow-color: rgba(0,0,0,0.3);
         }
 
         /* Common styles */
-        body {
-            font-family: 'Inter', sans-serif;
-            background: var(--background-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 0;
-            line-height: 1.5;
-        }
-
         .main-header {
             padding: 2rem 0;
             text-align: center;
-            background: var(--primary-color);
-            color: white;
+            background: var(--background-color);
+            border-bottom: 1px solid var(--border-color);
             margin-bottom: 2rem;
-            box-shadow: 0 4px 6px var(--shadow-color);
         }
 
         .main-header h1 {
+            color: var(--text-color);
             font-size: 2.5rem;
             font-weight: 700;
             margin: 0;
@@ -48,28 +39,26 @@ def get_styles():
         .card {
             background: var(--background-color);
             border: 1px solid var(--border-color);
-            border-radius: 0.75rem;
+            border-radius: 0.5rem;
             padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 2px 4px var(--shadow-color);
+            margin-bottom: 1rem;
+            box-shadow: 0 1px 3px var(--shadow-color);
         }
 
         /* Button styles */
         .btn-primary {
             background-color: var(--primary-color);
             color: white;
-            padding: 0.75rem 1.25rem;
-            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
             border: none;
             cursor: pointer;
-            font-size: 0.9rem;
-            font-weight: 600;
-            transition: background-color 0.2s, transform 0.2s;
+            font-size: 0.875rem;
+            transition: background-color 0.2s;
         }
 
         .btn-primary:hover {
-            background-color: #0284c7;
-            transform: translateY(-2px);
+            background-color: #059669;
         }
 
         /* Activity item styles */
@@ -79,15 +68,13 @@ def get_styles():
             padding: 1rem;
             background: var(--background-color);
             border: 1px solid var(--border-color);
-            border-radius: 0.75rem;
-            margin-bottom: 0.75rem;
-            box-shadow: 0 1px 3px var(--shadow-color);
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
         }
 
         .activity-icon {
-            font-size: 1.5rem;
+            font-size: 1.25rem;
             margin-right: 1rem;
-            color: var(--primary-color);
         }
 
         .activity-content {
@@ -96,7 +83,8 @@ def get_styles():
 
         .activity-title {
             font-weight: 600;
-            margin-bottom: 0.5rem;
+            color: var(--text-color);
+            margin-bottom: 0.25rem;
         }
 
         .activity-meta {
@@ -106,38 +94,33 @@ def get_styles():
 
         /* Form styles */
         .form-group {
-            margin-bottom: 1.25rem;
+            margin-bottom: 1rem;
         }
 
         .form-label {
             display: block;
             margin-bottom: 0.5rem;
+            color: var(--text-color);
             font-weight: 500;
         }
 
         .form-input {
             width: 100%;
-            padding: 0.75rem;
+            padding: 0.5rem;
             border: 1px solid var(--border-color);
-            border-radius: 0.5rem;
+            border-radius: 0.375rem;
             background: var(--background-color);
             color: var(--text-color);
-        }
-
-        .form-input:focus {
-            outline: none;
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.4);
         }
 
         /* Login page styles */
         .login-container {
             max-width: 400px;
-            margin: 5rem auto;
+            margin: 4rem auto;
             padding: 2rem;
             background: var(--background-color);
-            border-radius: 0.75rem;
-            box-shadow: 0 4px 8px var(--shadow-color);
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px var(--shadow-color);
         }
 
         .login-header {
@@ -146,8 +129,9 @@ def get_styles():
         }
 
         .login-header h2 {
-            font-size: 1.75rem;
+            color: var(--text-color);
+            font-size: 1.5rem;
             font-weight: 600;
         }
     </style>
-    """
+    """ 

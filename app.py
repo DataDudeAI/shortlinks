@@ -25,6 +25,12 @@ import time
 from auth import Auth
 from styles import get_styles
 from ui_config import setup_page
+from google_analytics import GoogleAnalytics
+from user_journey_tracker import UserJourneyTracker, JourneyEventType
+from dotenv import load_dotenv
+
+# Load environment variables at startup
+load_dotenv()
 
 # Setup logging
 logging.basicConfig(
@@ -1387,10 +1393,73 @@ def main():
         # Initialize database only once
         if 'db' not in st.session_state:
             st.session_state.db = Database()
-            
+            # Remove reinitialize_tables since it doesn't exist
+            logger.info("Database initialized")
+
+        # Initialize auth if not already done
         if 'auth' not in st.session_state:
             st.session_state.auth = Auth(st.session_state.db)
-        
+            logger.info("Auth initialized")
+
+        # Initialize Google Analytics
+        if 'ga' not in st.session_state:
+            try:
+                st.session_state.ga = GoogleAnalytics()
+                logger.info("Google Analytics initialized successfully")
+            except Exception as e:
+                logger.warning(f"Google Analytics initialization failed: {str(e)}")
+                st.session_state.ga = None
+
+        # Initialize User Journey Tracker with GA client
+        if 'journey_tracker' not in st.session_state:
+            try:
+                # Only initialize if GA is available
+                if st.session_state.ga:
+                    st.session_state.journey_tracker = UserJourneyTracker(
+                        database=st.session_state.db,  # Changed back to 'database'
+                        analytics_client=st.session_state.ga  # Changed to 'analytics_client'
+                    )
+                    logger.info("User Journey Tracker initialized successfully")
+                else:
+                    st.session_state.journey_tracker = None
+                    logger.warning("Journey Tracker not initialized - GA not available")
+            except Exception as e:
+                logger.warning(f"Journey Tracker initialization failed: {str(e)}")
+                st.session_state.journey_tracker = None
+
+        # Handle logout action first
+        if st.sidebar.button("Logout"):
+            if 'auth' in st.session_state:
+                st.session_state.auth.logout()
+                st.rerun()  # Use rerun instead of reload
+                return
+
+        # Check authentication before proceeding
+        if not st.session_state.auth.is_authenticated():
+            render_login_page()
+            return
+
+        # Track page view only if authenticated and GA available
+        if st.session_state.ga:
+            st.session_state.ga.track_page_view('Dashboard')
+            st.session_state.ga.track_event(
+                'page_view',
+                'dashboard',
+                'Dashboard View'
+            )
+
+        # Track user journey only if authenticated and tracker available
+        if st.session_state.journey_tracker:
+            st.session_state.journey_tracker.track_event(
+                JourneyEventType.PAGE_VIEW,
+                'dashboard_view',
+                {
+                    'page': 'dashboard',
+                    'user_role': st.session_state.user.get('role', 'unknown'),
+                    'organization': st.session_state.user.get('organization', 'unknown')
+                }
+            )
+
         # Check for redirect first
         params = st.query_params
         if 'r' in params:
@@ -1419,11 +1488,6 @@ def main():
             else:
                 st.error("Invalid short URL")
                 return
-            
-        # Check authentication first
-        if not st.session_state.auth.check_authentication():
-            st.session_state.auth.render_login_page()
-            return
             
         # Initialize shortener only after authentication
         if 'shortener' not in st.session_state:
@@ -1470,10 +1534,6 @@ def main():
                 format_func=lambda x: x if x else "",  # Hide None option
             )
             
-            if st.button("Logout"):
-                st.session_state.auth.logout()
-                st.rerun()
-
         # Page routing
         if selected_page == "🏠 Dashboard":
             render_header("Campaign Dashboard")
@@ -1491,9 +1551,96 @@ def main():
             render_header("Settings")
             render_settings()
 
+        # Initialize tracking variables
+        submitted = False
+        clicked = False
+        campaign_name = None
+        campaign_type = None
+        short_code = None
+        utm_source = None
+        utm_medium = None
+        utm_campaign = None
+
+        # Track campaign creation
+        if submitted and short_code:
+            if st.session_state.ga:
+                st.session_state.ga.track_event(
+                    'campaign',
+                    'create',
+                    'Campaign Created'
+                )
+            
+            if st.session_state.journey_tracker:
+                st.session_state.journey_tracker.track_event(
+                    JourneyEventType.CAMPAIGN_CREATE,
+                    'campaign_created',
+                    {
+                        'campaign_name': campaign_name,
+                        'campaign_type': campaign_type,
+                        'has_utm': bool(utm_source or utm_medium or utm_campaign)
+                    }
+                )
+
+        # Track link clicks
+        if clicked:
+            if st.session_state.ga:
+                st.session_state.ga.track_event(
+                    'link',
+                    'click',
+                    'Link Clicked'
+                )
+            
+            if st.session_state.journey_tracker:
+                st.session_state.journey_tracker.track_event(
+                    JourneyEventType.LINK_CLICK,
+                    'link_clicked',
+                    {
+                        'short_code': short_code,
+                        'campaign_name': campaign_name,
+                        'device_type': st.session_state.get('device_type', 'unknown')
+                    }
+                )
+
     except Exception as e:
         logger.error(f"Error in main: {str(e)}")
         st.error("An error occurred. Please try refreshing the page.")
+
+def track_event(event_name: str, event_params: dict = None):
+    """Track event in Google Analytics and Journey"""
+    try:
+        # Track in GA4
+        if hasattr(st.session_state, 'ga') and st.session_state.ga:
+            try:
+                event_category = event_params.get('category', 'general') if event_params else 'general'
+                event_label = str(event_params) if event_params else None
+                
+                st.session_state.ga.track_event(
+                    event_category=event_category,
+                    event_action=event_name,
+                    event_label=event_label
+                )
+            except Exception as e:
+                logger.warning(f"GA tracking failed: {str(e)}")
+        
+        # Track in Journey Tracker
+        if hasattr(st.session_state, 'journey_tracker') and st.session_state.journey_tracker:
+            try:
+                event_type = JourneyEventType.PAGE_VIEW
+                if 'error' in event_name.lower():
+                    event_type = JourneyEventType.ERROR
+                elif 'click' in event_name.lower():
+                    event_type = JourneyEventType.BUTTON_CLICK
+                
+                st.session_state.journey_tracker.track_event(
+                    event_type=event_type,
+                    event_name=event_name,
+                    event_data=event_params or {}
+                )
+            except Exception as e:
+                logger.warning(f"Journey tracking failed: {str(e)}")
+                
+    except Exception as e:
+        logger.error(f"Error tracking event: {str(e)}")
 
 def create_campaign():
     """Create new campaign form"""
