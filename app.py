@@ -46,8 +46,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
     menu_items={
-        'Get Help': 'https://github.com/DataDudeAI/shortlinks',
-        'Report a bug': "https://github.com/DataDudeAI/shortlinks/issues",
+        'Get Help': 'https://github.com/yourusername/shortlinks',
+        'Report a bug': "https://github.com/yourusername/shortlinks/issues",
         'About': "# Campaign Dashboard\nA powerful URL shortener and campaign management tool."
     }
 )
@@ -66,7 +66,7 @@ st.markdown("""
 # At the start of your app, after st.set_page_config
 setup_page()
 
-BASE_URL = "https://shortlinksnandan.streamlit.app/"  # For local development
+BASE_URL = "http://localhost:8501/"  # For local development
 
 CAMPAIGN_TYPES = {
     "Social Media": "🔵",

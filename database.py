@@ -11,6 +11,7 @@ from urllib.parse import urlparse, parse_qs, urlencode
 import streamlit as st
 import uuid
 from geo_service import GeoService
+from ip_tracker import IPTracker
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -521,115 +522,83 @@ class Database:
         try:
             stats = {}
             
-            # Update active campaigns query
-            active_query = """
-                SELECT COUNT(*) as active_count
-                FROM urls
-                WHERE is_active = 1
-                AND (
-                    last_clicked >= date('now', '-30 day')
-                    OR created_at >= date('now', '-30 day')
-                )
-            """
-            active_result = self.execute_query(active_query, fetch_one=True)
-            active_campaigns = active_result['active_count'] if active_result else 0
-
             # Get basic stats with proper counting
-            query = """
-                WITH stats AS (
+            base_query = """
+                WITH base_stats AS (
                     SELECT 
-                        COUNT(a.id) as total_clicks,
+                        COUNT(DISTINCT a.id) as total_clicks,
                         COUNT(DISTINCT a.ip_address) as unique_visitors,
                         COUNT(DISTINCT u.short_code) as total_campaigns,
-                        SUM(CASE WHEN u.is_active = 1 THEN 1 ELSE 0 END) as active_campaigns,
-                        AVG(CASE WHEN a.time_on_page > 0 THEN a.time_on_page ELSE NULL END) as avg_time,
-                        (SUM(CASE WHEN a.is_bounce = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as bounce_rate
+                        COUNT(DISTINCT CASE WHEN u.last_clicked >= date('now', '-30 day') THEN u.short_code END) as active_campaigns,
+                        ROUND(AVG(CASE WHEN a.time_on_page > 0 THEN a.time_on_page ELSE NULL END), 2) as avg_time,
+                        ROUND(SUM(CASE WHEN a.is_bounce = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0), 2) as bounce_rate,
+                        COUNT(CASE WHEN a.is_conversion = 1 THEN 1 END) as conversions
                     FROM urls u
                     LEFT JOIN analytics a ON u.short_code = a.short_code
                     WHERE a.clicked_at >= date('now', '-30 day') OR a.clicked_at IS NULL
                 )
                 SELECT 
                     *,
-                    (SELECT COUNT(*) FROM analytics 
-                     WHERE clicked_at >= date('now', '-60 day') 
-                     AND clicked_at < date('now', '-30 day')) as prev_clicks,
-                    (SELECT COUNT(DISTINCT ip_address) FROM analytics 
-                     WHERE clicked_at >= date('now', '-60 day') 
-                     AND clicked_at < date('now', '-30 day')) as prev_unique
-                FROM stats
+                    ROUND(CAST(conversions AS FLOAT) * 100 / NULLIF(total_clicks, 0), 2) as conversion_rate
+                FROM base_stats
             """
             
-            result = self.execute_query(query, fetch_one=True)
-            if result:
+            base_stats = self.execute_query(base_query, fetch_one=True)
+            if base_stats:
                 stats.update({
-                    'total_clicks': result['total_clicks'],
-                    'unique_visitors': result['unique_visitors'],
-                    'total_campaigns': result['total_campaigns'],
-                    'active_campaigns': active_campaigns,
-                    'previous_clicks': result['prev_clicks'],
-                    'previous_unique': result['prev_unique'],
-                    'bounce_rate': round(result['bounce_rate'], 2) if result['bounce_rate'] else 0,
-                    'avg_time': round(result['avg_time'], 2) if result['avg_time'] else 0
+                    'total_clicks': base_stats['total_clicks'] or 0,
+                    'unique_visitors': base_stats['unique_visitors'] or 0,
+                    'total_campaigns': base_stats['total_campaigns'] or 0,
+                    'active_campaigns': base_stats['active_campaigns'] or 0,
+                    'avg_time': base_stats['avg_time'] or 0,
+                    'bounce_rate': base_stats['bounce_rate'] or 0,
+                    'conversion_rate': base_stats['conversion_rate'] or 0
                 })
             
             # Get device stats
-            query = """
+            device_query = """
                 SELECT 
                     device_type,
                     COUNT(*) as count
                 FROM analytics
-                WHERE clicked_at >= date('now', '-30 days')
+                WHERE clicked_at >= date('now', '-30 day')
                 GROUP BY device_type
             """
-            device_results = self.execute_query(query)
-            stats['device_stats'] = {row['device_type']: row['count'] for row in device_results}
+            device_stats = self.execute_query(device_query)
+            stats['device_stats'] = {row['device_type']: row['count'] for row in device_stats} if device_stats else {}
             
             # Get browser stats
-            query = """
+            browser_query = """
                 SELECT 
                     browser,
                     COUNT(*) as count
                 FROM analytics
-                WHERE clicked_at >= date('now', '-30 days')
+                WHERE clicked_at >= date('now', '-30 day')
                 GROUP BY browser
             """
-            browser_results = self.execute_query(query)
-            stats['browser_stats'] = {row['browser']: row['count'] for row in browser_results}
+            browser_stats = self.execute_query(browser_query)
+            stats['browser_stats'] = {row['browser']: row['count'] for row in browser_stats} if browser_stats else {}
             
-            # Get recent activities with enhanced details
-            query = """
-                SELECT 
-                    a.clicked_at,
-                    a.device_type,
-                    a.browser,
-                    a.state,
-                    a.time_on_page,
-                    u.campaign_name,
-                    u.campaign_type
-                FROM analytics a
-                JOIN urls u ON a.short_code = u.short_code
-                ORDER BY a.clicked_at DESC
-                LIMIT 10
-            """
-            recent_activities = self.execute_query(query)
-            stats['recent_activities'] = [dict(activity) for activity in recent_activities]
+            # Get recent activities
+            stats['recent_activities'] = self.get_recent_activities(10)
             
-            # Get top campaigns with engagement metrics
-            query = """
+            # Get traffic sources
+            stats['traffic_sources'] = self.get_traffic_sources()
+            
+            # Get top campaigns
+            campaign_query = """
                 SELECT 
                     u.campaign_name,
-                    u.campaign_type,
-                    COUNT(a.id) as clicks,
+                    COUNT(DISTINCT a.id) as clicks,
                     COUNT(DISTINCT a.ip_address) as unique_visitors,
-                    AVG(a.time_on_page) as avg_time,
-                    (COUNT(CASE WHEN a.time_on_page < 10 THEN 1 END) * 100.0 / COUNT(*)) as bounce_rate
+                    ROUND(COUNT(CASE WHEN a.is_conversion = 1 THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 2) as conversion_rate
                 FROM urls u
                 LEFT JOIN analytics a ON u.short_code = a.short_code
-                GROUP BY u.campaign_name, u.campaign_type
+                GROUP BY u.campaign_name
                 ORDER BY clicks DESC
                 LIMIT 5
             """
-            stats['top_campaigns'] = self.execute_query(query)
+            stats['top_campaigns'] = self.execute_query(campaign_query) or []
             
             return stats
             
@@ -640,28 +609,26 @@ class Database:
                 'unique_visitors': 0,
                 'total_campaigns': 0,
                 'active_campaigns': 0,
-                'recent_activities': [],
-                'top_campaigns': [],
+                'avg_time': 0,
+                'bounce_rate': 0,
+                'conversion_rate': 0,
                 'device_stats': {},
                 'browser_stats': {},
-                'previous_clicks': 0,
-                'previous_unique': 0,
-                'bounce_rate': 0,
-                'avg_time': 0
+                'recent_activities': [],
+                'traffic_sources': {},
+                'top_campaigns': []
             }
 
     def record_click(self, short_code: str, client_info: Dict[str, Any]):
         """Record click analytics with engagement metrics"""
         try:
+            # Get IP and click data
+            ip_tracker = IPTracker()
+            click_data = ip_tracker.get_click_data(client_info)
+            
             # Enrich client info with geo data
             geo_service = GeoService()
-            enriched_info = geo_service.enrich_client_info(client_info)
-            
-            # Parse user agent for device info
-            user_agent = enriched_info.get('user_agent', '')
-            device_type = 'Mobile' if enriched_info.get('is_mobile') else 'Desktop'
-            browser = self._detect_browser(user_agent)
-            os = 'Unknown'  # You can implement OS detection if needed
+            enriched_info = geo_service.enrich_client_info(click_data)
             
             # Generate session ID if not exists
             session_id = enriched_info.get('session_id', str(uuid.uuid4()))
@@ -672,27 +639,29 @@ class Database:
                 INSERT INTO analytics (
                     short_code, clicked_at, ip_address, user_agent,
                     referrer, state, device_type, browser, os,
-                    event_type, session_id, is_bounce, time_on_page
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    event_type, session_id, is_bounce, time_on_page,
+                    is_conversion
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             
             self.execute_query(insert_query, (
                 short_code,
                 current_time,
                 enriched_info.get('ip_address'),
-                user_agent,
+                enriched_info.get('user_agent'),
                 enriched_info.get('referrer'),
-                enriched_info.get('state', 'Maharashtra'),
-                device_type,
-                browser,
-                os,
+                enriched_info.get('state'),
+                enriched_info.get('device_type', 'Desktop'),
+                enriched_info.get('browser', 'Chrome'),
+                enriched_info.get('os', 'Unknown'),
                 'click',
                 session_id,
                 1,  # is_bounce
-                0   # initial time_on_page
+                0,  # initial time_on_page
+                0   # is_conversion
             ))
 
-            # Update URL stats
+            # Update URL stats with proper unique visitor counting
             update_query = """
                 UPDATE urls 
                 SET 
@@ -703,6 +672,7 @@ class Database:
                         FROM analytics 
                         WHERE short_code = ? 
                         AND ip_address IS NOT NULL
+                        AND ip_address != ''
                     )
                 WHERE short_code = ?
             """

@@ -1,0 +1,35 @@
+==================================================
+Timestamp: 2025-01-15 21:55:23
+IP Address: 103.168.233.45
+Location: Mumbai, Maharashtra, India
+ISP: Jio Digital
+Organization: Reliance Jio
+Coordinates: 19.0760, 72.8777
+Timezone: Asia/Kolkata
+ASN: AS55836
+==================================================
+
+**************************************************
+CLICK EVENT DATA
+**************************************************
+{
+  "timestamp": "2025-01-15 21:55:23",
+  "ip_address": "103.168.233.45",
+  "country": "India",
+  "region": "Maharashtra",
+  "city": "Mumbai",
+  "isp": "Jio Digital",
+  "org": "Reliance Jio",
+  "latitude": 19.0760,
+  "longitude": 72.8777,
+  "timezone": "Asia/Kolkata",
+  "asn": "AS55836",
+  "user_agent": "Mozilla/5.0...",
+  "referrer": "https://google.com",
+  "device_type": "Mobile",
+  "browser": "Chrome",
+  "os": "Android",
+  "session_id": "abc123",
+  "campaign": "Test Campaign"
+}
+************************************************** 
