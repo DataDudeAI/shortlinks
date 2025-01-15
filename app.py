@@ -66,7 +66,7 @@ st.markdown("""
 # At the start of your app, after st.set_page_config
 setup_page()
 
-BASE_URL = "https://shortlinksnandan.streamlit.app/"  # For local development
+BASE_URL = "http://localhost:8501/"  # For local development
 
 CAMPAIGN_TYPES = {
     "Social Media": "🔵",
@@ -949,7 +949,7 @@ class URLShortener:
 
         with trend_cols[1]:
             # Traffic Source Analysis
-            #st.markdown("#### Traffic Sources")
+            st.markdown("#### Traffic Sources")
             traffic_data = {
                 'Source': ['Direct', 'Social', 'Email', 'Referral', 'Organic'],
                 'Visits': [stats.get('direct_visits', 120), 
@@ -1324,29 +1324,22 @@ def render_header(title: str):
 def render_dashboard():
     """Render the main dashboard with enhanced details"""
     try:
-        # Get comprehensive stats with defaults
-        stats = shortener.db.get_dashboard_stats()
+        # Get comprehensive stats with defaults first
+        stats = shortener.db.get_dashboard_stats() or {
+            'total_clicks': 0,
+            'unique_visitors': 0,
+            'total_campaigns': 0,
+            'active_campaigns': 0,
+            'recent_activities': [],
+            'top_campaigns': [],
+            'device_stats': {},
+            'browser_stats': {},
+            'previous_clicks': 0,
+            'previous_unique': 0,
+            'bounce_rate': 0,
+            'avg_time': 0
+        }
         
-        # Get campaign stats first
-        campaign_stats_query = """
-            SELECT 
-                u.campaign_name,
-                u.campaign_type,
-                u.short_code,
-                u.total_clicks,
-                COUNT(DISTINCT a.ip_address) as unique_visitors,
-                ROUND(COUNT(DISTINCT a.ip_address) * 100.0 / NULLIF(COUNT(*), 0), 2) as conversion_rate,
-                ROUND(AVG(a.time_on_page), 2) as avg_time,
-                u.created_at,
-                MAX(a.clicked_at) as last_click
-            FROM urls u
-            LEFT JOIN analytics a ON u.short_code = a.short_code
-            GROUP BY u.campaign_name, u.campaign_type, u.short_code
-            ORDER BY u.total_clicks DESC
-            LIMIT 10
-        """
-        campaign_stats = pd.DataFrame(shortener.db.execute_query(campaign_stats_query))
-
         # Main Metrics Display
         st.markdown("### 📊 Key Metrics")
         metric_cols = st.columns(4)
@@ -1469,7 +1462,7 @@ def render_dashboard():
 
         with insight_cols[2]:
             total_clicks = stats.get('total_clicks', 0)
-            impressions = stats.get('impressions', 1)
+            impressions = stats.get('impressions', 0)
             conversion_rate = (total_clicks / max(1, impressions)) * 100
             st.markdown(f"""
                 <div class="metric-card">

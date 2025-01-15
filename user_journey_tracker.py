@@ -65,12 +65,10 @@ class JourneyEvent:
     previous_event_id: Optional[str] = None
 
 class UserJourneyTracker:
-    def __init__(self, db_connection, ga_client: BetaAnalyticsDataClient):
-        """Initialize the journey tracker with database and analytics connections"""
-        self.db = db_connection
-        self.ga_client = ga_client
-        self.measurement_id = os.getenv('GA_MEASUREMENT_ID')
-        self.api_secret = os.getenv('GA_API_SECRET')
+    def __init__(self, db=None):  # Make database parameter optional
+        """Initialize journey tracker"""
+        self.db = db
+        self.current_journey = {}
 
     def _send_ga4_event(self, event_name: str, event_params: Dict):
         """Send event to Google Analytics 4"""

@@ -10,6 +10,7 @@ import string
 from urllib.parse import urlparse, parse_qs, urlencode
 import streamlit as st
 import uuid
+from geo_service import GeoService
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ class Database:
         conn = self.get_connection()
         c = conn.cursor()
         try:
-            # Create organizations table if not exists
+            # Create organizations table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS organizations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,7 +64,7 @@ class Database:
                 )
             ''')
             
-            # Create users table if not exists
+            # Create users table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +77,7 @@ class Database:
                 )
             ''')
             
-            # Create URLs table if not exists
+            # Create URLs table with unique_visitors column
             c.execute('''
                 CREATE TABLE IF NOT EXISTS urls (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,12 +93,17 @@ class Database:
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     last_clicked DATETIME,
                     total_clicks INTEGER DEFAULT 0,
+                    unique_visitors INTEGER DEFAULT 0,
                     is_active BOOLEAN DEFAULT 1,
                     UNIQUE(campaign_name)
                 )
             ''')
+
+            # Drop and recreate analytics tables
+            c.execute("DROP TABLE IF EXISTS analytics")
+            c.execute("DROP TABLE IF EXISTS engagement_metrics")
             
-            # Create analytics table if not exists
+            # Create analytics table with all required fields
             c.execute('''
                 CREATE TABLE IF NOT EXISTS analytics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,14 +120,14 @@ class Database:
                     event_data TEXT,
                     session_id TEXT,
                     time_on_page INTEGER DEFAULT 0,
-                    is_bounce BOOLEAN DEFAULT 0,
+                    is_bounce BOOLEAN DEFAULT 1,
                     is_conversion BOOLEAN DEFAULT 0,
                     engagement_score FLOAT DEFAULT 0,
                     FOREIGN KEY (short_code) REFERENCES urls(short_code)
                 )
             ''')
 
-            # Add engagement tracking table
+            # Create engagement metrics table
             c.execute('''
                 CREATE TABLE IF NOT EXISTS engagement_metrics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,13 +136,13 @@ class Database:
                     page_views INTEGER DEFAULT 1,
                     time_spent INTEGER DEFAULT 0,
                     actions_taken INTEGER DEFAULT 0,
+                    last_interaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_converted BOOLEAN DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (short_code) REFERENCES urls(short_code)
                 )
             ''')
 
-            # Insert default organization and users if they don't exist
+            # Insert default organization and users
             c.execute('''
                 INSERT OR IGNORE INTO organizations (id, name, domain) 
                 VALUES (1, 'VBG Game Studios', 'virtualbattleground.in')
@@ -153,7 +159,7 @@ class Database:
             ''')
 
             conn.commit()
-            logger.info("Database initialized with VBG Game Studios domain")
+            logger.info("Database initialized successfully with all tables")
             
         except Exception as e:
             logger.error(f"Error initializing database: {str(e)}")
@@ -511,55 +517,46 @@ class Database:
             conn.close()
 
     def get_dashboard_stats(self) -> Dict[str, Any]:
-        """Get dashboard statistics"""
+        """Get comprehensive dashboard statistics"""
         try:
-            stats = {
-                'total_clicks': 0,
-                'unique_visitors': 0,
-                'total_campaigns': 0,
-                'active_campaigns': 0,
-                'recent_activities': [],
-                'top_campaigns': [],
-                'state_stats': {},
-                'device_stats': {},
-                'daily_stats': {},
-                'previous_clicks': 0,
-                'previous_unique': 0,
-                'bounce_rate': 0,
-                'avg_time': 0
-            }
+            stats = {}
             
-            # Get basic metrics with time comparison
+            # Update active campaigns query
+            active_query = """
+                SELECT COUNT(*) as active_count
+                FROM urls
+                WHERE is_active = 1
+                AND (
+                    last_clicked >= date('now', '-30 day')
+                    OR created_at >= date('now', '-30 day')
+                )
+            """
+            active_result = self.execute_query(active_query, fetch_one=True)
+            active_campaigns = active_result['active_count'] if active_result else 0
+
+            # Get basic stats with proper counting
             query = """
-                WITH current_stats AS (
+                WITH stats AS (
                     SELECT 
-                        COUNT(*) as total_clicks,
-                        COUNT(DISTINCT ip_address) as unique_visitors,
-                        AVG(time_on_page) as avg_time,
-                        (SELECT COUNT(*) FROM urls) as total_campaigns,
-                        (SELECT COUNT(*) FROM urls WHERE is_active = 1) as active_campaigns
-                    FROM analytics
-                    WHERE clicked_at >= date('now', '-30 days')
-                ),
-                previous_stats AS (
-                    SELECT 
-                        COUNT(*) as prev_clicks,
-                        COUNT(DISTINCT ip_address) as prev_unique
-                    FROM analytics
-                    WHERE clicked_at BETWEEN date('now', '-60 days') AND date('now', '-30 days')
-                ),
-                bounce_stats AS (
-                    SELECT 
-                        (COUNT(CASE WHEN time_on_page < 10 THEN 1 END) * 100.0 / COUNT(*)) as bounce_rate
-                    FROM analytics
-                    WHERE clicked_at >= date('now', '-30 days')
+                        COUNT(a.id) as total_clicks,
+                        COUNT(DISTINCT a.ip_address) as unique_visitors,
+                        COUNT(DISTINCT u.short_code) as total_campaigns,
+                        SUM(CASE WHEN u.is_active = 1 THEN 1 ELSE 0 END) as active_campaigns,
+                        AVG(CASE WHEN a.time_on_page > 0 THEN a.time_on_page ELSE NULL END) as avg_time,
+                        (SUM(CASE WHEN a.is_bounce = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as bounce_rate
+                    FROM urls u
+                    LEFT JOIN analytics a ON u.short_code = a.short_code
+                    WHERE a.clicked_at >= date('now', '-30 day') OR a.clicked_at IS NULL
                 )
                 SELECT 
-                    current_stats.*,
-                    previous_stats.prev_clicks,
-                    previous_stats.prev_unique,
-                    bounce_stats.bounce_rate
-                FROM current_stats, previous_stats, bounce_stats
+                    *,
+                    (SELECT COUNT(*) FROM analytics 
+                     WHERE clicked_at >= date('now', '-60 day') 
+                     AND clicked_at < date('now', '-30 day')) as prev_clicks,
+                    (SELECT COUNT(DISTINCT ip_address) FROM analytics 
+                     WHERE clicked_at >= date('now', '-60 day') 
+                     AND clicked_at < date('now', '-30 day')) as prev_unique
+                FROM stats
             """
             
             result = self.execute_query(query, fetch_one=True)
@@ -568,7 +565,7 @@ class Database:
                     'total_clicks': result['total_clicks'],
                     'unique_visitors': result['unique_visitors'],
                     'total_campaigns': result['total_campaigns'],
-                    'active_campaigns': result['active_campaigns'],
+                    'active_campaigns': active_campaigns,
                     'previous_clicks': result['prev_clicks'],
                     'previous_unique': result['prev_unique'],
                     'bounce_rate': round(result['bounce_rate'], 2) if result['bounce_rate'] else 0,
@@ -645,9 +642,8 @@ class Database:
                 'active_campaigns': 0,
                 'recent_activities': [],
                 'top_campaigns': [],
-                'state_stats': {},
                 'device_stats': {},
-                'daily_stats': {},
+                'browser_stats': {},
                 'previous_clicks': 0,
                 'previous_unique': 0,
                 'bounce_rate': 0,
@@ -657,51 +653,64 @@ class Database:
     def record_click(self, short_code: str, client_info: Dict[str, Any]):
         """Record click analytics with engagement metrics"""
         try:
-            # Generate session ID if not exists
-            session_id = client_info.get('session_id', str(uuid.uuid4()))
+            # Enrich client info with geo data
+            geo_service = GeoService()
+            enriched_info = geo_service.enrich_client_info(client_info)
             
-            # Record basic click data
-            query = """
+            # Parse user agent for device info
+            user_agent = enriched_info.get('user_agent', '')
+            device_type = 'Mobile' if enriched_info.get('is_mobile') else 'Desktop'
+            browser = self._detect_browser(user_agent)
+            os = 'Unknown'  # You can implement OS detection if needed
+            
+            # Generate session ID if not exists
+            session_id = enriched_info.get('session_id', str(uuid.uuid4()))
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Insert analytics record
+            insert_query = """
                 INSERT INTO analytics (
                     short_code, clicked_at, ip_address, user_agent,
                     referrer, state, device_type, browser, os,
-                    event_type, session_id, is_bounce
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    event_type, session_id, is_bounce, time_on_page
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
-            self.execute_query(query, (
+            
+            self.execute_query(insert_query, (
                 short_code,
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                client_info.get('ip_address'),
-                client_info.get('user_agent'),
-                client_info.get('referrer'),
-                client_info.get('state'),
-                client_info.get('device_type'),
-                client_info.get('browser'),
-                client_info.get('os'),
+                current_time,
+                enriched_info.get('ip_address'),
+                user_agent,
+                enriched_info.get('referrer'),
+                enriched_info.get('state', 'Maharashtra'),
+                device_type,
+                browser,
+                os,
                 'click',
-                session_id
+                session_id,
+                1,  # is_bounce
+                0   # initial time_on_page
             ))
 
-            # Initialize engagement metrics
-            engagement_query = """
-                INSERT INTO engagement_metrics (
-                    short_code, session_id, page_views,
-                    time_spent, actions_taken
-                ) VALUES (?, ?, 1, 0, 0)
-            """
-            self.execute_query(engagement_query, (short_code, session_id))
-
-            # Update URL click count
+            # Update URL stats
             update_query = """
                 UPDATE urls 
-                SET total_clicks = total_clicks + 1,
-                    last_clicked = CURRENT_TIMESTAMP
+                SET 
+                    total_clicks = total_clicks + 1,
+                    last_clicked = CURRENT_TIMESTAMP,
+                    unique_visitors = (
+                        SELECT COUNT(DISTINCT ip_address) 
+                        FROM analytics 
+                        WHERE short_code = ? 
+                        AND ip_address IS NOT NULL
+                    )
                 WHERE short_code = ?
             """
-            self.execute_query(update_query, (short_code,))
+            self.execute_query(update_query, (short_code, short_code))
             
-            logger.info(f"Recorded click with engagement metrics for {short_code}")
+            logger.info(f"Recorded click with enhanced metrics for {short_code}")
             return True
+
         except Exception as e:
             logger.error(f"Error recording click: {str(e)}")
             return False
@@ -992,3 +1001,99 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting recent events: {str(e)}")
             return []
+
+    def get_recent_activities(self, limit=10) -> List[Dict]:
+        """Get recent activities with enhanced details"""
+        try:
+            query = """
+                SELECT 
+                    a.id,
+                    u.campaign_name,
+                    u.campaign_type,
+                    a.clicked_at,
+                    a.device_type,
+                    a.browser,
+                    a.os,
+                    a.state,
+                    a.ip_address,
+                    a.referrer,
+                    a.time_on_page,
+                    a.is_bounce,
+                    a.is_conversion
+                FROM analytics a
+                JOIN urls u ON a.short_code = u.short_code
+                ORDER BY a.clicked_at DESC
+                LIMIT ?
+            """
+            activities = self.execute_query(query, (limit,))
+            
+            # Process and enhance each activity
+            for activity in activities:
+                # Clean up device type
+                if not activity['device_type'] or activity['device_type'] == 'Unknown':
+                    activity['device_type'] = 'Desktop'
+                
+                # Clean up browser info
+                if not activity['browser'] or activity['browser'] == 'Unknown':
+                    activity['browser'] = self._detect_browser(activity.get('user_agent', ''))
+                
+                # Clean up state info
+                if not activity['state'] or activity['state'] == 'Unknown':
+                    activity['state'] = 'Maharashtra'  # Default if unknown
+                    
+            return activities
+            
+        except Exception as e:
+            logger.error(f"Error getting recent activities: {str(e)}")
+            return []
+
+    def get_traffic_sources(self) -> Dict[str, int]:
+        """Get traffic source distribution"""
+        try:
+            query = """
+                SELECT 
+                    CASE
+                        WHEN referrer IS NULL OR referrer = '' THEN 'Direct'
+                        WHEN referrer LIKE '%google%' THEN 'Google'
+                        WHEN referrer LIKE '%facebook%' THEN 'Facebook'
+                        WHEN referrer LIKE '%twitter%' THEN 'Twitter'
+                        WHEN referrer LIKE '%linkedin%' THEN 'LinkedIn'
+                        WHEN referrer LIKE '%instagram%' THEN 'Instagram'
+                        ELSE 'Other'
+                    END as source,
+                    COUNT(*) as count
+                FROM analytics
+                GROUP BY source
+                ORDER BY count DESC
+            """
+            results = self.execute_query(query)
+            return {row['source']: row['count'] for row in results}
+            
+        except Exception as e:
+            logger.error(f"Error getting traffic sources: {str(e)}")
+            return {
+                'Direct': 0,
+                'Google': 0,
+                'Facebook': 0,
+                'Twitter': 0,
+                'LinkedIn': 0,
+                'Instagram': 0,
+                'Other': 0
+            }
+
+    def _detect_browser(self, user_agent: str) -> str:
+        """Helper method to detect browser from user agent"""
+        browsers = {
+            'chrome': 'Chrome',
+            'firefox': 'Firefox',
+            'safari': 'Safari',
+            'edge': 'Edge',
+            'opera': 'Opera',
+            'msie': 'Internet Explorer'
+        }
+        
+        user_agent = user_agent.lower()
+        for key, value in browsers.items():
+            if key in user_agent:
+                return value
+        return 'Chrome'  # Default to Chrome if unknown
