@@ -5,8 +5,9 @@ urllib3
 typing
 plotly
 user-agents
-ip2geotools
 pandas
 requests
 qrcode
 Pillow
+python-dotenv
+google-analytics-data
