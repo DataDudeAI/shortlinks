@@ -66,7 +66,7 @@ st.markdown("""
 # At the start of your app, after st.set_page_config
 setup_page()
 
-BASE_URL = "https://shortlinksnandan.streamlit.app/"  # For local development
+BASE_URL = "https://shortl.streamlit.app/"  # For local development
 
 CAMPAIGN_TYPES = {
     "Social Media": "🔵",
